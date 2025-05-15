@@ -1,0 +1,28 @@
+{
+	"name": "@maximai/maxim-js",
+	"description": "Maxim AI JS SDK. Visit https://getmaxim.ai for more info.",
+	"version": "6.3.0",
+	"devDependencies": {
+		"tslib": "2.6.3"
+	},
+	"peerDependencies": {
+		"@types/mime-types": "^2.1.4",
+		"mime-types": "^3.0.1"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"keywords": [
+		"ai",
+		"gen-ai",
+		"llm",
+		"openai"
+	],
+	"author": {
+		"name": "Maxim Engineering",
+		"email": "eng@getmaxim.ai"
+	},
+	"type": "commonjs",
+	"main": "index.js",
+	"typings": "index.d.ts"
+}
