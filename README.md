@@ -63,10 +63,15 @@ Use our [Maxim Langchain Tracer](https://www.npmjs.com/package/@maximai/maxim-js
 
 ## Version changelog
 
+### v6.4.0
+
+- feat: adds `provider` field to the `Prompt` type. This field specifies the LLM provider (e.g., 'openai', 'anthropic', etc.) for the prompt.
+
 ### v6.3.0
+
 - feat: adds attachments support to `Trace`, `Span`, and `Generation` for file uploads.
-	- 3 attachment types are supported: file path, buffer data, and URL
-	- has auto-detection of MIME types, file sizes, and names for attachments wherever possible
+  - 3 attachment types are supported: file path, buffer data, and URL
+  - has auto-detection of MIME types, file sizes, and names for attachments wherever possible
 - fix: refactored message handling for Generations to prevent keeping messages reference but rather duplicates the object to ensure point in time capture.
 - fix: ensures proper cleanup of resources
 
@@ -77,7 +82,7 @@ Use our [Maxim Langchain Tracer](https://www.npmjs.com/package/@maximai/maxim-js
 entity.addAttachment({
 	id: uuid(),
 	type: "file",
-	path: "/path/to/file.pdf"
+	path: "/path/to/file.pdf",
 });
 
 // Add buffer data as attachment
@@ -85,21 +90,23 @@ const buffer = fs.readFileSync("image.png");
 entity.addAttachment({
 	id: uuid(),
 	type: "fileData",
-	data: buffer
+	data: buffer,
 });
 
 // Add URL as attachment
 entity.addAttachment({
 	id: uuid(),
 	type: "url",
-	url: "https://example.com/image.jpg"
+	url: "https://example.com/image.jpg",
 });
 ```
 
 ### v6.2.2
+
 - fix: Added support for OpenAI's `logprobs` output in generation results (`ChatCompletionResult` and `TextCompletionResult`).
 
 ### v6.2.1
+
 - fix: Refactored message handling in Generation class to prevent duplicate messages
 
 ### v6.2.0
