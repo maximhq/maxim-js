@@ -26,6 +26,7 @@ export type Prompt = {
 	messages: { role: string; content: string | CompletionRequestContent[] }[];
 	modelParameters: { [key: string]: any };
 	model: string;
+	provider: string;
 	tags: PromptTags;
 };
 

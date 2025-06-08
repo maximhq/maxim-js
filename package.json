@@ -1,7 +1,7 @@
 {
 	"name": "@maximai/maxim-js",
 	"description": "Maxim AI JS SDK. Visit https://getmaxim.ai for more info.",
-	"version": "6.3.0",
+	"version": "6.4.0",
 	"devDependencies": {
 		"tslib": "2.6.3"
 	},

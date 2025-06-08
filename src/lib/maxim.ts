@@ -397,6 +397,7 @@ export class Maxim {
 						messages: deployedVersion!.config?.messages,
 						modelParameters: deployedVersion!.config?.modelParameters,
 						model: deployedVersion!.config?.model,
+						provider: deployedVersion!.config?.provider,
 						tags: deployedVersion!.config?.tags,
 					} as Prompt;
 				}
@@ -420,6 +421,7 @@ export class Maxim {
 							messages: deployedVersion!.config?.messages,
 							modelParameters: deployedVersion!.config?.modelParameters,
 							model: deployedVersion!.config?.model,
+							provider: deployedVersion!.config?.provider,
 							tags: deployedVersion!.config?.tags,
 						} as Prompt;
 					}
