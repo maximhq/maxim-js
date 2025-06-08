@@ -17,7 +17,6 @@ import { type TestRunBuilder } from "./models/testRun";
 import { createTestRunBuilder } from "./testRun/testRun";
 
 declare global {
-	// eslint-disable-next-line @typescript-eslint/naming-convention
 	var __maxim__sdk__instances__: Map<string, Maxim>;
 }
 

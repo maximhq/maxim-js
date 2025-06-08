@@ -8,7 +8,7 @@ import {
 	Maxim,
 	TestRunLogger,
 	YieldedOutput,
-} from "@maximai/maxim-js";
+} from "../../index";
 import "dotenv/config";
 import fs from "node:fs";
 
