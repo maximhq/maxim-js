@@ -4,6 +4,24 @@ export type PromptTags = {
 	[key: string]: string | number | boolean | undefined;
 };
 
+interface ToolCallFunction {
+	arguments: string;
+	name: string;
+}
+
+interface ToolCall {
+	id: string;
+	function: ToolCallFunction;
+	type: string;
+}
+
+export interface ChatCompletionMessage {
+	role: "assistant";
+	content: string | null;
+	function_call?: ToolCallFunction;
+	tool_calls?: Array<ToolCall>;
+}
+
 export type CompletionRequestTextContent = {
 	type: "text";
 	text: string;
@@ -19,28 +37,17 @@ export type CompletionRequestImageUrlContent = {
 
 export type CompletionRequestContent = CompletionRequestTextContent | CompletionRequestImageUrlContent;
 
+export interface CompletionRequest {
+	role: "user" | "system" | "tool" | "function";
+	content: string | Array<CompletionRequestContent>;
+	tool_call_id?: string;
+}
+
 export type ImageUrl = CompletionRequestImageUrlContent["image_url"];
-
-export type FunctionCall = {
-	name: string;
-	arguments: string;
-};
-
-export type ToolCall = {
-	id: string;
-	type: string;
-	function: FunctionCall;
-};
-
-export type Message = {
-	role: string;
-	content: string;
-	toolCalls?: ToolCall[];
-};
 
 export type Choice = {
 	index: number;
-	message: Message;
+	message: ChatCompletionMessage;
 	finishReason: string;
 };
 
@@ -64,7 +71,7 @@ export type Prompt = {
 	promptId: string;
 	version: number;
 	versionId: string;
-	messages: { role: string; content: string | CompletionRequestContent[] }[];
+	messages: (CompletionRequest | ChatCompletionMessage)[];
 	modelParameters: { [key: string]: any };
 	model: string;
 	provider: string;

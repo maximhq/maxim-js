@@ -7,4 +7,7 @@ module.exports = {
 	moduleFileExtensions: ["ts", "tsx", "js", "jsx"],
 	collectCoverageFrom: ["src/**/*.{ts,tsx}", "!src/**/*.d.ts", "!src/**/*.spec.ts", "!src/**/*.test.ts"],
 	clearMocks: true,
+	transform: {
+		"^.+\\.(ts|tsx)$": ["ts-jest", { tsconfig: "tsconfig.spec.json" }],
+	},
 };
