@@ -12,7 +12,13 @@ import { DefaultLogger } from "./defaultLogger";
 
 import { sanitizeDataStructure, validateDataStructure } from "../dataset/dataset";
 import { getAllKeysByValue } from "../utils/utils";
-import { promptVersionIdOutputFunctionClosure, runLocalEvaluations, runOutputFunction, workflowIdOutputFunctionClosure } from "./runUtils";
+import {
+	promptVersionIdOutputFunctionClosure,
+	runLocalEvaluations,
+	runOutputFunction,
+	workflowIdOutputFunctionClosure,
+	promptChainVersionIdOutputFunctionClosure,
+} from "./runUtils";
 import { sanitizeData, sanitizeEvaluators } from "./sanitizationUtils";
 import { buildErrorMessage, calculatePollingInterval, createStatusTable, getLocalEvaluatorNameToIdAndPassFailCriteriaMap } from "./utils";
 
@@ -44,6 +50,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 		return createTestRunBuilder({ ...config, humanEvaluationConfig });
 	},
 	withPromptVersionId: (id, contextToEvaluate) => createTestRunBuilder({ ...config, promptVersion: { id, contextToEvaluate } }),
+	withPromptChainVersionId: (id, contextToEvaluate) => createTestRunBuilder({ ...config, promptChainVersion: { id, contextToEvaluate } }),
 	withWorkflowId: (id, contextToEvaluate) => createTestRunBuilder({ ...config, workflow: { id, contextToEvaluate } }),
 	yieldsOutput: (outputFunction) => createTestRunBuilder({ ...config, outputFunction }),
 	withLogger: (logger) => createTestRunBuilder({ ...config, logger }),
@@ -61,13 +68,16 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 		if (!config.workspaceId) {
 			errors.push("Workspace Id is required to run a test.");
 		}
-		if (!config.outputFunction && !config.promptVersion && !config.workflow) {
+		if (!config.outputFunction && !config.promptVersion && !config.promptChainVersion && !config.workflow) {
 			errors.push(
-				"Output function or prompt version id, or workflow id  is required to run a test. You can use either yieldsOutput, withPromptVersionId or withWorkflowId to set them respectively.",
+				"Output function or prompt version id, prompt chain version id, or workflow id is required to run a test. You can use either yieldsOutput, withPromptVersionId, withPromptChainVersionId or withWorkflowId to set them respectively.",
 			);
 		}
-		if ((config.outputFunction ? 1 : 0) + (config.promptVersion ? 1 : 0) + (config.workflow ? 1 : 0) !== 1) {
-			errors.push("Exactly one of outputFunction, promptVersionId, or workflowId must be set.");
+		if (
+			(config.outputFunction ? 1 : 0) + (config.promptVersion ? 1 : 0) + (config.promptChainVersion ? 1 : 0) + (config.workflow ? 1 : 0) !==
+			1
+		) {
+			errors.push("Exactly one of outputFunction, promptVersionId, promptChainVersionId, or workflowId must be set.");
 		}
 		if (!config.data) {
 			errors.push("Data or dataset id is required to run a test.");
@@ -111,6 +121,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 		const humanEvaluationConfig = config.humanEvaluationConfig;
 		const outputFunction = config.outputFunction;
 		const promptVersion = config.promptVersion;
+		const promptChainVersion = config.promptChainVersion;
 		const workflow = config.workflow;
 		const failedEntryIndices: number[] = [];
 		const localEvaluatorNameToIdAndPassFailCriteriaMap = getLocalEvaluatorNameToIdAndPassFailCriteriaMap(evaluators);
@@ -164,9 +175,16 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 							APITestRunService,
 							promptVersion.contextToEvaluate,
 						);
+					} else if (promptChainVersion) {
+						outputFunctionToExecute = promptChainVersionIdOutputFunctionClosure<T>(
+							promptChainVersion.id,
+							input ?? "",
+							APITestRunService,
+							promptChainVersion.contextToEvaluate,
+						);
 					} else {
 						throw new Error(
-							"Found no output function to execute, please make sure you have either `yieldsOutput`, `withPromptVersionId` or `withWorkflowId` set.",
+							"Found no output function to execute, please make sure you have either `yieldsOutput`, `withPromptVersionId`, `withPromptChainVersionId` or `withWorkflowId` set.",
 						);
 					}
 				}
@@ -175,7 +193,9 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				if (output.retrievedContextToEvaluate) {
 					if (contextToEvaluate) {
 						logger.info(
-							`Detected retrieved context returned from output function for row ${index + 1} that had contextToEvaluate set from the dataset.\nOverriding the contextToEvaluate from dataset with the retrieved context`,
+							`Detected retrieved context returned from output function for row ${
+								index + 1
+							} that had contextToEvaluate set from the dataset.\nOverriding the contextToEvaluate from dataset with the retrieved context`,
 						);
 					}
 					contextToEvaluate = output.retrievedContextToEvaluate;
@@ -207,12 +227,12 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 												prompt_tokens: output.meta.usage.promptTokens,
 												total_tokens: output.meta.usage.totalTokens,
 												latency: output.meta.usage.latency,
-											}
+										  }
 										: {
 												latency: output.meta.usage.latency,
-											}
+										  }
 									: undefined,
-							}
+						  }
 						: undefined,
 					entry: {
 						input,
@@ -224,7 +244,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 							? localEvaluationResults.map((result) => ({
 									...result,
 									id: localEvaluatorNameToIdAndPassFailCriteriaMap.get(result.name)!.id,
-								}))
+							  }))
 							: undefined,
 					},
 				});
@@ -247,10 +267,12 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 					contextToEvaluate: workflow?.contextToEvaluate
 						? workflow.contextToEvaluate
 						: promptVersion?.contextToEvaluate
-							? promptVersion.contextToEvaluate
-							: typeof mappingKeys.contextToEvaluate === "string"
-								? mappingKeys.contextToEvaluate
-								: undefined,
+						? promptVersion.contextToEvaluate
+						: promptChainVersion?.contextToEvaluate
+						? promptChainVersion.contextToEvaluate
+						: typeof mappingKeys.contextToEvaluate === "string"
+						? mappingKeys.contextToEvaluate
+						: undefined,
 					dataEntry: row.data,
 				},
 			});
@@ -310,6 +332,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				evaluators.filter((e) => typeof e !== "string").length > 0 ? true : false,
 				workflow?.id,
 				promptVersion?.id,
+				promptChainVersion?.id,
 				humanEvaluationConfig,
 			);
 
@@ -524,7 +547,9 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 										logger.error(
 											buildErrorMessage(
 												new Error(
-													`=> Skipping page ${page - 1}\nError while sanitizing reponse as per data structure: ${err.message}\n\tGot response: ${JSON.stringify(fetchedData)}`,
+													`=> Skipping page ${page - 1}\nError while sanitizing reponse as per data structure: ${
+														err.message
+													}\n\tGot response: ${JSON.stringify(fetchedData)}`,
 													{
 														cause: err,
 													},
@@ -535,7 +560,9 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 										logger.error(
 											buildErrorMessage(
 												new Error(
-													`=> Skipping page ${page - 1}\nError while sanitizing reponse as per data structure\n\tGot response: ${JSON.stringify(fetchedData)}`,
+													`=> Skipping page ${
+														page - 1
+													}\nError while sanitizing reponse as per data structure\n\tGot response: ${JSON.stringify(fetchedData)}`,
 													{
 														cause: err,
 													},
@@ -651,7 +678,11 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				// if the test run is taking more than timeout period complete, we will redirect them to the web portal instead
 				if (++pollCount > maxIterations) {
 					throw new Error(
-						`Test run is taking over timeout period (${Math.round(timeoutInMinutes)} minutes) to complete, please check the report on our web portal directly: ${config.baseUrl}/workspace/${config.workspaceId}/testrun/${testRun.id}`,
+						`Test run is taking over timeout period (${Math.round(
+							timeoutInMinutes,
+						)} minutes) to complete, please check the report on our web portal directly: ${config.baseUrl}/workspace/${
+							config.workspaceId
+						}/testrun/${testRun.id}`,
 					);
 				}
 

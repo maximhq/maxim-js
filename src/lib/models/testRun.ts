@@ -93,6 +93,10 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 		id: string;
 		contextToEvaluate?: string;
 	};
+	promptChainVersion?: {
+		id: string;
+		contextToEvaluate?: string;
+	};
 	workflow?: {
 		id: string;
 		contextToEvaluate?: string;
@@ -298,6 +302,18 @@ export type TestRunBuilder<T extends DataStructure | undefined = undefined> = {
 	 *     .withPromptVersionId("promptVersionId", "contextVariableName");
 	 */
 	withPromptVersionId: (id: string, contextToEvaluate?: string) => TestRunBuilder<T>;
+
+	/**
+	 * Sets the prompt chain version ID for the test run. Optionally, you can also set the context to evaluate for the prompt chain. (Note: setting the context to evaluate will end up overriding the CONTEXT_TO_EVALUATE dataset column value)
+	 * @param id The prompt chain version ID to set.
+	 * @param contextToEvaluate The context to evaluate for the prompt chain (variable name essentially).
+	 * @returns The TestRunBuilder with the prompt chain version set.
+	 * @example
+	 * maxim
+	 *     .createTestRun("name", "workspaceId")
+	 *     .withPromptChainVersionId("promptChainVersionId", "contextVariableName");
+	 */
+	withPromptChainVersionId: (id: string, contextToEvaluate?: string) => TestRunBuilder<T>;
 
 	/**
 	 * Sets the workflow ID for the test run. Optionally, you can also set the context to evaluate for the workflow. (Note: setting the context to evaluate will end up overriding the CONTEXT_TO_EVALUATE dataset column value)
@@ -518,6 +534,37 @@ export type MaximAPITestRunEntryExecutePromptForDataPayload = {
 };
 
 export type MaximAPITestRunEntryExecutePromptForDataResponse =
+	| {
+			data: {
+				output?: string;
+				contextToEvaluate?: string;
+				usage?: {
+					promptTokens: number;
+					completionTokens: number;
+					totalTokens: number;
+					latency?: number;
+				};
+				cost?: {
+					input: number;
+					output: number;
+					total: number;
+				};
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+export type MaximAPITestRunEntryExecutePromptChainForDataPayload = {
+	promptChainVersionId: string;
+	input: string;
+	dataEntry?: Record<string, string | string[] | null | undefined>;
+	contextToEvaluate?: string;
+};
+
+export type MaximAPITestRunEntryExecutePromptChainForDataResponse =
 	| {
 			data: {
 				output?: string;

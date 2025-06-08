@@ -10,7 +10,7 @@ import { LoggerConfig, MaximLogger } from "./logger/logger";
 import { DatasetEntry } from "./models/dataset";
 import { RuleGroupType } from "./models/deployment";
 import { Folder } from "./models/folder";
-import { Prompt, PromptVersionsAndRules } from "./models/prompt";
+import { ImageUrl, Prompt, PromptVersionsAndRules } from "./models/prompt";
 import { PromptChain, PromptChainVersionsAndRules } from "./models/promptChain";
 import { QueryRule } from "./models/queryBuilder";
 import { type TestRunBuilder } from "./models/testRun";
@@ -398,6 +398,12 @@ export class Maxim {
 						model: deployedVersion!.config?.model,
 						provider: deployedVersion!.config?.provider,
 						tags: deployedVersion!.config?.tags,
+						run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => {
+							if (!deployedVersion) {
+								throw new Error("[Maxim-SDK] Deployed version missing while attempting to run prompt");
+							}
+							return this.APIService.prompt.runPromptVersion(deployedVersion.id, input, options);
+						},
 					} as Prompt;
 				}
 			} else {
@@ -422,6 +428,12 @@ export class Maxim {
 							model: deployedVersion!.config?.model,
 							provider: deployedVersion!.config?.provider,
 							tags: deployedVersion!.config?.tags,
+							run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => {
+								if (!deployedVersion) {
+									throw new Error("[Maxim-SDK] Deployed version missing while attempting to run prompt");
+								}
+								return this.APIService.prompt.runPromptVersion(deployedVersion.id, input, options);
+							},
 						} as Prompt;
 					}
 				}
@@ -432,6 +444,12 @@ export class Maxim {
 					versionId: promptVersionAndRules.fallbackVersion!.id,
 					version: promptVersionAndRules.fallbackVersion!.version,
 					...promptVersionAndRules.fallbackVersion.config!,
+					run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => {
+						if (!promptVersionAndRules.fallbackVersion?.id) {
+							throw new Error("[Maxim-SDK] Deployed fallback version missing while attempting to run prompt");
+						}
+						return this.APIService.prompt.runPromptVersion(promptVersionAndRules.fallbackVersion.id, input, options);
+					},
 				} as Prompt;
 			}
 			return undefined;
@@ -489,6 +507,12 @@ export class Maxim {
 						versionId: deployedVersion!.id,
 						version: deployedVersion!.version,
 						nodes: deployedVersion!.config?.nodes.filter((n) => "prompt" in n),
+						run: (input: string, options?: { variables?: { [key: string]: string } }) => {
+							if (!deployedVersion?.id) {
+								throw new Error("[Maxim-SDK] Deployed version missing while attempting to run prompt chain");
+							}
+							return this.APIService.promptChain.runPromptChainVersion(deployedVersion.id, input, options);
+						},
 					} as PromptChain;
 				}
 			} else {
@@ -509,6 +533,12 @@ export class Maxim {
 							versionId: deployedVersion!.id,
 							version: deployedVersion!.version,
 							nodes: deployedVersion!.config?.nodes.filter((n) => "prompt" in n),
+							run: (input: string, options?: { variables?: { [key: string]: string } }) => {
+								if (!deployedVersion?.id) {
+									throw new Error("[Maxim-SDK] Deployed version missing while attempting to run prompt chain");
+								}
+								return this.APIService.promptChain.runPromptChainVersion(deployedVersion.id, input, options);
+							},
 						} as PromptChain;
 					}
 				}
@@ -521,6 +551,12 @@ export class Maxim {
 					nodes: promptChainVersionAndRules.fallbackVersion!.config
 						? promptChainVersionAndRules.fallbackVersion!.config.nodes.filter((n) => "prompt" in n)
 						: [],
+					run: (input: string, options?: { variables?: { [key: string]: string } }) => {
+						if (!promptChainVersionAndRules.fallbackVersion?.id) {
+							throw new Error("[Maxim-SDK] Deployed fallback version missing while attempting to run prompt chain");
+						}
+						return this.APIService.promptChain.runPromptChainVersion(promptChainVersionAndRules.fallbackVersion.id, input, options);
+					},
 				} as PromptChain;
 			}
 			return undefined;

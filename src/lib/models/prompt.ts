@@ -19,6 +19,47 @@ export type CompletionRequestImageUrlContent = {
 
 export type CompletionRequestContent = CompletionRequestTextContent | CompletionRequestImageUrlContent;
 
+export type ImageUrl = CompletionRequestImageUrlContent["image_url"];
+
+export type FunctionCall = {
+	name: string;
+	arguments: string;
+};
+
+export type ToolCall = {
+	id: string;
+	type: string;
+	function: FunctionCall;
+};
+
+export type Message = {
+	role: string;
+	content: string;
+	toolCalls?: ToolCall[];
+};
+
+export type Choice = {
+	index: number;
+	message: Message;
+	finishReason: string;
+};
+
+export type Usage = {
+	promptTokens: number;
+	completionTokens: number;
+	totalTokens: number;
+	latency: number;
+};
+
+export type PromptResponse = {
+	id: string;
+	provider: string;
+	model: string;
+	choices: Choice[];
+	usage: Usage;
+	modelParams: { [key: string]: any };
+};
+
 export type Prompt = {
 	promptId: string;
 	version: number;
@@ -28,6 +69,7 @@ export type Prompt = {
 	model: string;
 	provider: string;
 	tags: PromptTags;
+	run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => Promise<PromptResponse>;
 };
 
 export type PromptTagValues = {
@@ -67,5 +109,10 @@ export type MaximApiPromptResponse = {
 
 export type MaximApiPromptsResponse = {
 	data: ({ promptId: string } & PromptVersionsAndRules)[];
+	error?: { message: string };
+};
+
+export type MaximApiPromptRunResponse = {
+	data: PromptResponse;
 	error?: { message: string };
 };

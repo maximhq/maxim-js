@@ -75,7 +75,9 @@ export async function runLocalEvaluations<T extends DataStructure | undefined>(
 								passFailCriteria: evaluator.passFailCriteria[name],
 								result: {
 									score: "Err",
-									reasoning: `Error while running combined evaluator with names ${evaluator.names}: ${err instanceof Error ? err.message : JSON.stringify(err)}`,
+									reasoning: `Error while running combined evaluator with names ${evaluator.names}: ${
+										err instanceof Error ? err.message : JSON.stringify(err)
+									}`,
 								},
 							};
 						});
@@ -99,7 +101,9 @@ export async function runLocalEvaluations<T extends DataStructure | undefined>(
 								passFailCriteria: evaluator.passFailCriteria,
 								result: {
 									score: "Err",
-									reasoning: `Error while running evaluator "${evaluator.name}": ${err instanceof Error ? err.message : JSON.stringify(err)}`,
+									reasoning: `Error while running evaluator "${evaluator.name}": ${
+										err instanceof Error ? err.message : JSON.stringify(err)
+									}`,
 								},
 							},
 						];
@@ -172,6 +176,30 @@ export function promptVersionIdOutputFunctionClosure<T extends DataStructure | u
 			dataEntry: data,
 			input,
 			promptVersionId,
+			contextToEvaluate,
+		});
+		return {
+			data: result.output ?? "",
+			retrievedContextToEvaluate: result.contextToEvaluate,
+			meta: {
+				usage: result.usage,
+				cost: result.cost,
+			},
+		};
+	};
+}
+
+export function promptChainVersionIdOutputFunctionClosure<T extends DataStructure | undefined>(
+	promptChainVersionId: string,
+	input: string,
+	TestRunAPIService: MaximTestRunAPI,
+	contextToEvaluate?: string,
+) {
+	return async (data: Data<T>): Promise<YieldedOutput> => {
+		const result = await TestRunAPIService.executePromptChainForData({
+			dataEntry: data,
+			input,
+			promptChainVersionId,
 			contextToEvaluate,
 		});
 		return {

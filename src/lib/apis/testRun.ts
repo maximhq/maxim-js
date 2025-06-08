@@ -4,6 +4,8 @@ import {
 	MaximAPICreateTestRunResponse,
 	MaximAPITestRunEntryExecutePromptForDataPayload,
 	MaximAPITestRunEntryExecutePromptForDataResponse,
+	MaximAPITestRunEntryExecutePromptChainForDataPayload,
+	MaximAPITestRunEntryExecutePromptChainForDataResponse,
 	MaximAPITestRunEntryExecuteWorkflowForDataPayload,
 	MaximAPITestRunEntryExecuteWorkflowForDataResponse,
 	MaximAPITestRunEntryPushPayload,
@@ -27,6 +29,7 @@ export class MaximTestRunAPI extends MaximAPI {
 		requiresLocalRun: boolean,
 		workflowId?: string,
 		promptVersionId?: string,
+		promptChainVersionId?: string,
 		humanEvaluationConfig?: HumanEvaluationConfig,
 	): Promise<ExtractAPIDataType<MaximAPICreateTestRunResponse>> {
 		return new Promise((resolve, reject) => {
@@ -44,6 +47,7 @@ export class MaximTestRunAPI extends MaximAPI {
 					requiresLocalRun,
 					workflowId,
 					promptVersionId,
+					promptChainVersionId,
 					humanEvaluationConfig,
 				}),
 			})
@@ -251,6 +255,41 @@ export class MaximTestRunAPI extends MaximAPI {
 				},
 				body: JSON.stringify({
 					promptVersionId,
+					input,
+					dataEntry,
+					contextToEvaluate,
+				}),
+			})
+				.then((response) => {
+					if ("error" in response) {
+						reject(response.error);
+					} else {
+						resolve(response.data);
+					}
+				})
+				.catch((error) => {
+					reject(error);
+				});
+		});
+	}
+
+	public async executePromptChainForData({
+		promptChainVersionId,
+		input,
+		dataEntry,
+		contextToEvaluate,
+	}: MaximAPITestRunEntryExecutePromptChainForDataPayload): Promise<
+		ExtractAPIDataType<MaximAPITestRunEntryExecutePromptChainForDataResponse>
+	> {
+		return new Promise((resolve, reject) => {
+			this.fetch<MaximAPITestRunEntryExecutePromptChainForDataResponse>(`/api/sdk/v1/test-run/execute/prompt-chain`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json",
+				},
+				body: JSON.stringify({
+					promptChainVersionId,
 					input,
 					dataEntry,
 					contextToEvaluate,
