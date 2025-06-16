@@ -60,7 +60,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 		return null;
 	}
 
-	private getContainer(runId: string, parentRunId?: string): Container | undefined {
+	private getContainer(runId: string, parentRunId?: string, metadata?: Record<string, unknown>, tags?: string[]): Container | undefined {
 		let container: Container | undefined;
 		if (parentRunId) {
 			container = this.containerManager.getContainer(parentRunId);
@@ -69,8 +69,29 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 			container = this.containerManager.getContainer(runId);
 			if (!container) {
 				const traceId = uuid();
-				container = new TraceContainer(this.containerManager, this.logger, traceId, "Trace", undefined, false);
-				container.create();
+
+				// Process metadata for trace-specific information
+				const maximMetadata = this.getMetadataClassFromRecord(metadata);
+				const traceName = maximMetadata?.traceName ?? "Trace";
+				const sessionId = maximMetadata?.sessionId ?? undefined;
+				const traceTags = parseLangchainTags(maximMetadata?.traceTags, tags);
+
+				// Add metadata as tags if provided
+				if (metadata) {
+					Object.entries(metadata).forEach(([key, value]) => {
+						if (key !== "maxim") {
+							// Don't add the maxim object itself as a tag
+							traceTags[key.trim()] = typeof value === "string" ? value.trim() : this.safeStringify(value);
+						}
+					});
+				}
+
+				container = new TraceContainer(this.containerManager, this.logger, traceId, traceName, undefined, false);
+				if (container instanceof TraceContainer) {
+					container.create(traceTags, sessionId);
+				} else {
+					container.create(traceTags);
+				}
 			}
 		}
 		return container;
@@ -91,7 +112,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 			const maximMetadata = this.getMetadataClassFromRecord(metadata);
 
 			// Get/create container
-			const container = this.getContainer(runId, parentRunId);
+			const container = this.getContainer(runId, parentRunId, metadata, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for chain");
 				return;
@@ -115,7 +136,9 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 			// Add metadata as tags if provided
 			if (metadata) {
 				Object.entries(metadata).forEach(([key, value]) => {
-					chainTags[key.trim()] = typeof value === "string" ? value.trim() : this.safeStringify(value);
+					if (key !== "maxim") {
+						chainTags[key.trim()] = typeof value === "string" ? value.trim() : this.safeStringify(value);
+					}
 				});
 			}
 
@@ -153,7 +176,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 	): void {
 		try {
 			// Get/create container (no parentRunId here because we want the runId container to be closed itself)
-			const container = this.getContainer(runId);
+			const container = this.getContainer(runId, undefined, undefined, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for chain");
 				return;
@@ -178,7 +201,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 	): void {
 		try {
 			// Get/create container (no parentRunId here because we want the runId container to be closed itself)
-			const container = this.getContainer(runId);
+			const container = this.getContainer(runId, undefined, undefined, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for chain");
 				return;
@@ -210,7 +233,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 			const maximMetadata = this.getMetadataClassFromRecord(metadata);
 
 			// Get/create container
-			const container = this.getContainer(runId, parentRunId);
+			const container = this.getContainer(runId, parentRunId, metadata, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for LLM");
 				return;
@@ -279,7 +302,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 	) {
 		try {
 			// Get/create container
-			const container = this.getContainer(runId, parentRunId);
+			const container = this.getContainer(runId, parentRunId, undefined, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for generation");
 				return;
@@ -309,7 +332,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 	) {
 		try {
 			// Get/create container
-			const container = this.getContainer(runId, parentRunId);
+			const container = this.getContainer(runId, parentRunId, undefined, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for generation");
 				return;
@@ -345,7 +368,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 			const maximMetadata = this.getMetadataClassFromRecord(metadata);
 
 			// Get/create container
-			const container = this.getContainer(runId, parentRunId);
+			const container = this.getContainer(runId, parentRunId, metadata, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for chat model");
 				return;
@@ -420,7 +443,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 			const maximMetadata = this.getMetadataClassFromRecord(metadata);
 
 			// Get/create container
-			const container = this.getContainer(runId, parentRunId);
+			const container = this.getContainer(runId, parentRunId, metadata, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for retrieval");
 				return;
@@ -460,7 +483,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 	) {
 		try {
 			// Get/create container
-			const container = this.getContainer(runId, parentRunId);
+			const container = this.getContainer(runId, parentRunId, undefined, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for retrieval");
 				return;
@@ -494,7 +517,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 			const maximMetadata = this.getMetadataClassFromRecord(metadata);
 
 			// Get/create container
-			const container = this.getContainer(runId, parentRunId);
+			const container = this.getContainer(runId, parentRunId, metadata, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for tool");
 				return;
@@ -535,7 +558,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 	) {
 		try {
 			// Get/create container
-			const container = this.getContainer(runId, parentRunId);
+			const container = this.getContainer(runId, parentRunId, undefined, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for tool");
 				return;
@@ -545,7 +568,8 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 			addParsedTagsToLogger(tags, (key, value) => this.logger.toolCallAddTag(runId, key, value));
 
 			// Process entity-specific logic - handle different output formats
-			if (isToolMessage(output)) {
+			try {
+				isToolMessage(output);
 				// Handle different possible output formats from LangChain
 				if (output.status) {
 					// Status-based output format
@@ -560,7 +584,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 					// Fallback: stringify the entire output
 					this.logger.toolCallResult(runId, typeof output.content === "string" ? output.content : this.safeStringify(output.content));
 				}
-			} else {
+			} catch (err) {
 				// Fallback for any other type
 				this.logger.toolCallResult(
 					runId,
@@ -590,7 +614,7 @@ export class MaximLangchainTracer extends BaseCallbackHandler {
 	) {
 		try {
 			// Get/create container
-			const container = this.getContainer(runId, parentRunId);
+			const container = this.getContainer(runId, parentRunId, undefined, tags);
 			if (!container) {
 				console.error("[MaximSDK] Couldn't find a container for tool");
 				return;
