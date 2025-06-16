@@ -1,11 +1,36 @@
 import { Prompt } from "./prompt";
 import { DeploymentVersionDeploymentConfig } from "./deployment";
 
+export type AgentCost = {
+	input: number;
+	output: number;
+	total: number;
+};
+
+export type AgentUsage = {
+	promptTokens: number;
+	completionTokens: number;
+	totalTokens: number;
+};
+
+export type AgentResponseMeta = {
+	cost: AgentCost;
+	usage: AgentUsage;
+	boundVariableResponses?: { [key: string]: any };
+	retrievedContext?: string;
+};
+
+export type AgentResponse = {
+	response: string;
+	meta: AgentResponseMeta;
+};
+
 export type PromptChain = {
 	promptChainId: string;
 	version: number;
 	versionId: string;
 	nodes: ({ order: number } & PromptNode)[];
+	run: (input: string, options?: { variables?: { [key: string]: string } }) => Promise<AgentResponse>;
 };
 
 export type PromptNode = {
@@ -54,5 +79,10 @@ export type MaximApiPromptChainResponse = {
 
 export type MaximApiPromptChainsResponse = {
 	data: ({ promptChainId: string } & PromptChainVersionsAndRules)[];
+	error?: { message: string };
+};
+
+export type MaximApiAgentRunResponse = {
+	data: AgentResponse;
 	error?: { message: string };
 };
