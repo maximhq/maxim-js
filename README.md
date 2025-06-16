@@ -55,17 +55,12 @@ logger.spanEnd("span-id");
 logger.traceEnd("trace-id");
 ```
 
-## Integrations with other frameworks
-
-### Langchain
-
-Use our [Maxim Langchain Tracer](https://www.npmjs.com/package/@maximai/maxim-js-langchain) to integrate Maxim observability with just 2 lines of code.
-
 ## Version changelog
 
 ### v6.4.0
 
 - feat: adds `provider` field to the `Prompt` type. This field specifies the LLM provider (e.g., 'openai', 'anthropic', etc.) for the prompt.
+- feat: include Langchain integration in the main repository
 
 ### v6.3.0
 
