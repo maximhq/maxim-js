@@ -41,3 +41,5 @@ testConfig.json
 .env
 .env.beta
 .env.prod
+
+.npmrc
