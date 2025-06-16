@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { v4 as uuid } from "uuid";
-import { Maxim } from "./maxim";
+import { Maxim } from "../../index";
 
 const env = "dev";
 const config: any = JSON.parse(fs.readFileSync(`${process.cwd()}/libs/maxim-js/testConfig.json`, "utf-8"));

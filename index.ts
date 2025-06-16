@@ -5,6 +5,7 @@ export * from "./src/lib/logger/components";
 export * from "./src/lib/logger/logger";
 export * from "./src/lib/maxim";
 export * from "./src/lib/models/cache";
+export { VariableType } from "./src/lib/models/dataset";
 export type { Data } from "./src/lib/models/dataset";
 export type { LocalEvaluationResult } from "./src/lib/models/evaluator";
 export * from "./src/lib/models/queryBuilder";

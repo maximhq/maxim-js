@@ -1,6 +1,8 @@
 {
-	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
+		"incremental": true,
+		"target": "ES2022",
+		"lib": ["ES2022"],
 		"moduleResolution": "node",
 		"baseUrl": ".",
 		"module": "commonjs",
@@ -10,10 +12,13 @@
 		"noPropertyAccessFromIndexSignature": true,
 		"noImplicitReturns": true,
 		"noFallthroughCasesInSwitch": true,
-		"noEmit": false
+		"noEmit": false,
+		"skipLibCheck": true,
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"resolveJsonModule": true
 	},
-	"files": [],
-	"include": [],
+	"include": ["src/**/*.ts", "index.ts"],
 	"references": [
 		{
 			"path": "./tsconfig.lib.json"
