@@ -317,67 +317,71 @@ export function parseLangchainMessages(
 					if (typeof message === "string") {
 						return;
 					}
-					if (isBaseMessage(message)) {
-						if (isSystemMessage(message)) {
-							messages.push({ role: "system", content: message.content as unknown as CompletionRequest["content"] });
-							return;
+					try {
+						if (isBaseMessage(message)) {
+							try {
+								if (isSystemMessage(message)) {
+									messages.push({ role: "system", content: message.content as unknown as CompletionRequest["content"] });
+									return;
+								}
+							} catch (err) {}
+							try {
+								if (isHumanMessage(message)) {
+									messages.push({ role: "user", content: message.content as unknown as CompletionRequest["content"] });
+									return;
+								}
+							} catch (err) {}
+							try {
+								if (isAIMessage(message)) {
+									// message.tool_calls
+									messages.push({
+										role: "assistant",
+										content: message.content as unknown as ChatCompletionMessage["content"],
+										tool_calls: message.tool_calls?.map((tc) => ({
+											id: tc.id ?? "",
+											type: tc.type ?? "",
+											function: {
+												name: tc.name,
+												arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args),
+											},
+										})),
+									});
+									return;
+								}
+							} catch (err) {}
+							try {
+								if (isChatMessage(message)) {
+									messages.push({
+										role: "assistant",
+										content: message.content as unknown as ChatCompletionMessage["content"],
+									});
+									return;
+								}
+							} catch (err) {}
+							try {
+								if (isToolMessage(message)) {
+									messages.push({
+										role: "tool",
+										content: message.content as unknown as CompletionRequest["content"],
+										tool_call_id: message.tool_call_id,
+									});
+									return;
+								}
+							} catch (err) {}
+							try {
+								if (isFunctionMessage(message)) {
+									messages.push({
+										role: "function",
+										content: message.content as unknown as CompletionRequest["content"],
+									});
+									return;
+								}
+							} catch (err) {}
+							console.error(`[Maxim SDK] Invalid message type: ${message.getType()}`, { message });
+						} else {
+							console.error(`[Maxim SDK] Invalid message: The message is not of type BaseMessage`, { message });
 						}
-					}
-					if (isBaseMessage(message)) {
-						if (isHumanMessage(message)) {
-							messages.push({ role: "user", content: message.content as unknown as CompletionRequest["content"] });
-							return;
-						}
-					}
-					if (isBaseMessage(message)) {
-						if (isAIMessage(message)) {
-							// message.tool_calls
-							messages.push({
-								role: "assistant",
-								content: message.content as unknown as ChatCompletionMessage["content"],
-								tool_calls: message.tool_calls?.map((tc) => ({
-									id: tc.id ?? "",
-									type: tc.type ?? "",
-									function: {
-										name: tc.name,
-										arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args),
-									},
-								})),
-							});
-							return;
-						}
-					}
-					if (isBaseMessage(message)) {
-						if (isChatMessage(message)) {
-							messages.push({
-								role: "assistant",
-								content: message.content as unknown as ChatCompletionMessage["content"],
-							});
-							return;
-						}
-					}
-					if (isBaseMessage(message)) {
-						if (isToolMessage(message)) {
-							messages.push({
-								role: "tool",
-								content: message.content as unknown as CompletionRequest["content"],
-								tool_call_id: message.tool_call_id,
-							});
-							return;
-						}
-					}
-					if (isBaseMessage(message)) {
-						if (isFunctionMessage(message)) {
-							messages.push({
-								role: "function",
-								content: message.content as unknown as CompletionRequest["content"],
-							});
-							return;
-						}
-					}
-					if (isBaseMessage(message)) {
-						console.error(`[Maxim SDK] Invalid message type: ${message.getType()}`, { message });
-					} else {
+					} catch (err) {
 						console.error(`[Maxim SDK] Invalid message: The message is not of type BaseMessage`, { message });
 					}
 				});

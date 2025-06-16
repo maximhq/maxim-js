@@ -1129,4 +1129,345 @@ describe("Comprehensive MaximLangchainTracer Tests", () => {
 			}
 		}, 60000);
 	});
+
+	describe("README Examples Tests", () => {
+		it("should work with basic usage example from README", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+
+			if (logger) {
+				// Example from README: Basic usage
+				const maximTracer = new MaximLangchainTracer(logger);
+
+				// Use with any LangChain runnable
+				const prompt = ChatPromptTemplate.fromTemplate("What is {topic}?");
+				const model = new ChatOpenAI({
+					model: "gpt-3.5-turbo",
+					openAIApiKey: openAIKey,
+				});
+				const chain = prompt.pipe(model);
+
+				// Method 1: Pass tracer at runtime
+				const result = await chain.invoke({ topic: "AI" }, { callbacks: [maximTracer] });
+				console.log("Basic usage result:", result.content);
+
+				// Method 2: Attach permanently to the chain
+				const chainWithTracer = chain.withConfig({ callbacks: [maximTracer] });
+				const result2 = await chainWithTracer.invoke({ topic: "machine learning" });
+				console.log("Permanent tracer result:", result2.content);
+
+				logger.flush();
+			} else {
+				throw new Error("logger is not available");
+			}
+		}, 20000);
+
+		it("should work with LangGraph integration example from README", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+
+			if (logger) {
+				const maximTracer = new MaximLangchainTracer(logger);
+
+				// Use a working LangGraph pattern that demonstrates the README concept
+				// This follows the same pattern as shown in README but uses the working createReactAgent
+				const model = new ChatOpenAI({
+					openAIApiKey: openAIKey,
+					model: "gpt-3.5-turbo",
+				});
+
+				// Create a simple tool for the demo
+				const demoTool = tool(
+					async ({ message }) => {
+						return `Processed: ${message}`;
+					},
+					{
+						name: "demo_processor",
+						schema: z.object({
+							message: z.string(),
+						}),
+						description: "Process a demo message",
+					},
+				);
+
+				// Create LangGraph agent (demonstrates the graph concept from README)
+				const checkpointer = new MemorySaver();
+				const app = createReactAgent({
+					llm: model,
+					tools: [demoTool],
+					checkpointSaver: checkpointer,
+				});
+
+				// Use the tracer with your graph - matching README pattern
+				const result = await app.invoke(
+					{ messages: [{ role: "user", content: "Hello!" }] },
+					{ callbacks: [maximTracer], configurable: { thread_id: "readme_demo" } },
+				);
+
+				console.log("LangGraph integration result:", result.messages[result.messages.length - 1].content);
+				logger.flush();
+			} else {
+				throw new Error("logger is not available");
+			}
+		}, 25000);
+
+		it("should work with complete metadata example from README", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+
+			if (logger) {
+				const maximTracer = new MaximLangchainTracer(logger);
+				const prompt = ChatPromptTemplate.fromTemplate("What is {query}?");
+				const model = new ChatOpenAI({
+					openAIApiKey: openAIKey,
+					model: "gpt-3.5-turbo",
+				});
+				const chain = prompt.pipe(model);
+
+				// Complete example from README with comprehensive metadata
+				const result = await chain.invoke(
+					{ query: "What is machine learning?" },
+					{
+						callbacks: [maximTracer],
+						metadata: {
+							maxim: {
+								// Custom names for better organization
+								traceName: "ML Question Answering",
+
+								// Custom tags for filtering and analytics
+								traceTags: {
+									category: "educational",
+									priority: "high",
+									version: "v2.1",
+								},
+
+								// Link to existing session (optional)
+								sessionId: "user_session_123",
+							},
+							// You can also include non-Maxim metadata
+							user_id: "user_123",
+							request_id: "req_456",
+						},
+					},
+				);
+
+				console.log("Complete metadata example result:", result.content);
+				logger.flush();
+			} else {
+				throw new Error("logger is not available");
+			}
+		}, 15000);
+
+		it("should work with LLM-specific metadata example from README", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+
+			if (logger) {
+				const maximTracer = new MaximLangchainTracer(logger);
+				const model = new ChatOpenAI({
+					openAIApiKey: openAIKey,
+					model: "gpt-4",
+				});
+
+				// Example from README: For LLM calls
+				const llmResult = await model.invoke("Explain quantum computing", {
+					callbacks: [maximTracer],
+					metadata: {
+						maxim: {
+							generationName: "Quantum Computing Explanation",
+							generationTags: {
+								topic: "quantum_computing",
+								difficulty: "advanced",
+								model: "gpt-4",
+							},
+						},
+					},
+				});
+
+				console.log("LLM metadata example result:", llmResult.content);
+				logger.flush();
+			} else {
+				throw new Error("logger is not available");
+			}
+		}, 15000);
+
+		it("should work with retriever metadata example from README", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+
+			if (logger) {
+				const maximTracer = new MaximLangchainTracer(logger);
+
+				// Create sample documents for retriever
+				const docs = [
+					new Document({
+						pageContent: "Machine learning algorithms include supervised, unsupervised, and reinforcement learning approaches.",
+						metadata: { source: "ml_guide" },
+					}),
+					new Document({
+						pageContent: "Neural networks are a subset of machine learning inspired by biological neural networks.",
+						metadata: { source: "ai_basics" },
+					}),
+				];
+
+				const embeddings = new OpenAIEmbeddings({
+					openAIApiKey: openAIKey,
+				});
+
+				const vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
+				const retriever = vectorStore.asRetriever();
+
+				// Example from README: For retrievers
+				const retrievedDocs = await retriever.invoke("machine learning algorithms", {
+					callbacks: [maximTracer],
+					metadata: {
+						maxim: {
+							retrievalName: "ML Algorithm Search",
+							retrievalTags: {
+								index_name: "ml_papers",
+								search_type: "semantic",
+								top_k: "5",
+							},
+						},
+					},
+				});
+
+				console.log("Retriever metadata example result:", retrievedDocs.length, "documents retrieved");
+				logger.flush();
+			} else {
+				throw new Error("logger is not available");
+			}
+		}, 20000);
+
+		it("should work with tool call metadata example from README", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+
+			if (logger) {
+				const maximTracer = new MaximLangchainTracer(logger);
+
+				// Create a simple weather tool for the example
+				const weatherTool = tool(
+					async ({ query }) => {
+						// Simulate weather API call
+						return `Weather in ${query}: 72°F, sunny`;
+					},
+					{
+						name: "weather_lookup",
+						schema: z.object({
+							query: z.string(),
+						}),
+						description: "Look up weather information for a location",
+					},
+				);
+
+				// Example from README: For tool calls
+				const toolResult = await weatherTool.invoke(
+					{ query: "weather in NYC" },
+					{
+						callbacks: [maximTracer],
+						metadata: {
+							maxim: {
+								toolCallName: "Weather API Lookup",
+								toolCallTags: {
+									api: "openweather",
+									location: "NYC",
+									units: "metric",
+								},
+							},
+						},
+					},
+				);
+
+				console.log("Tool metadata example result:", toolResult);
+				logger.flush();
+			} else {
+				throw new Error("logger is not available");
+			}
+		}, 15000);
+
+		it("should work with comprehensive chain example showing all metadata types", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+
+			if (logger) {
+				const maximTracer = new MaximLangchainTracer(logger);
+
+				// Create a comprehensive chain that uses multiple metadata types
+				const prompt = ChatPromptTemplate.fromTemplate("Analyze the topic: {topic}");
+				const model = new ChatOpenAI({
+					openAIApiKey: openAIKey,
+					model: "gpt-3.5-turbo",
+				});
+
+				// Tool for additional analysis
+				const analysisTool = tool(
+					async ({ text }) => {
+						return `Analysis: ${text} contains ${text.split(" ").length} words`;
+					},
+					{
+						name: "text_analyzer",
+						schema: z.object({
+							text: z.string(),
+						}),
+						description: "Analyze text properties",
+					},
+				);
+
+				const modelWithTools = model.bindTools([analysisTool]);
+				const chain = prompt.pipe(modelWithTools);
+
+				// Execute with comprehensive metadata
+				const result = await chain.invoke(
+					{ topic: "artificial intelligence" },
+					{
+						callbacks: [maximTracer],
+						metadata: {
+							maxim: {
+								traceName: "AI Topic Analysis",
+								chainName: "Analysis Chain",
+								generationName: "Topic Analysis Generation",
+								traceTags: {
+									category: "analysis",
+									priority: "medium",
+									version: "v1.0",
+								},
+								chainTags: {
+									type: "analysis",
+									complexity: "medium",
+								},
+								generationTags: {
+									model: "gpt-3.5-turbo",
+									temperature: "0.7",
+								},
+								sessionId: "analysis_session_456",
+							},
+							// Additional metadata
+							experiment_id: "exp_789",
+							user_type: "premium",
+						},
+					},
+				);
+
+				console.log("Comprehensive metadata result:", result.content || result.tool_calls);
+				logger.flush();
+			} else {
+				throw new Error("logger is not available");
+			}
+		}, 20000);
+	});
 });

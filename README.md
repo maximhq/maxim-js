@@ -55,7 +55,345 @@ logger.spanEnd("span-id");
 logger.traceEnd("trace-id");
 ```
 
+## Integrations with other frameworks
+
+### LangChain
+
+You can use the built-in `MaximLangchainTracer` to integrate Maxim observability with your LangChain and LangGraph applications.
+
+#### Installation
+
+The LangChain integration is available as an optional dependency. Install the required LangChain package:
+
+```bash
+npm install @langchain/core
+```
+
+#### ⚡ 2-Line Integration
+
+Add comprehensive observability to your existing LangChain code with just **2 lines**:
+
+```js
+const maximTracer = new MaximLangchainTracer(logger);
+const result = await chain.invoke(input, { callbacks: [maximTracer] });
+```
+
+That's it! No need to modify your existing chains, agents, or LLM calls.
+
+#### Complete Setup Example
+
+```js
+import { MaximLangchainTracer } from "@maximai/maxim-js";
+import { ChatOpenAI } from "@langchain/openai";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+
+// Initialize Maxim (standard setup)
+const maxim = new Maxim({ apiKey: "your-maxim-api-key" });
+const logger = await maxim.logger({ id: "your-log-repository-id" });
+
+// Step 1: Create the tracer
+const maximTracer = new MaximLangchainTracer(logger);
+
+// Your existing LangChain code remains unchanged
+const prompt = ChatPromptTemplate.fromTemplate("What is {topic}?");
+const model = new ChatOpenAI({ model: "gpt-3.5-turbo" });
+const chain = prompt.pipe(model);
+
+// Step 2: Add tracer to your invoke calls
+const result = await chain.invoke({ topic: "AI" }, { callbacks: [maximTracer] });
+
+// Alternative: Attach permanently to the chain
+const chainWithTracer = chain.withConfig({ callbacks: [maximTracer] });
+const result2 = await chainWithTracer.invoke({ topic: "machine learning" });
+```
+
+#### LangGraph Integration
+
+```js
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { MemorySaver } from "@langchain/langgraph";
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+
+// Create a simple tool
+const searchTool = tool(
+	async ({ query }) => {
+		// Your tool implementation
+		return `Search results for: ${query}`;
+	},
+	{
+		name: "search",
+		schema: z.object({
+			query: z.string(),
+		}),
+		description: "Search for information",
+	},
+);
+
+// Create LangGraph agent
+const checkpointer = new MemorySaver();
+const agent = createReactAgent({
+	llm: model,
+	tools: [searchTool],
+	checkpointSaver: checkpointer,
+});
+
+// Use the tracer with your graph
+const result = await agent.invoke(
+	{ messages: [{ role: "user", content: "Hello!" }] },
+	{
+		callbacks: [maximTracer],
+		configurable: { thread_id: "conversation-1" },
+	},
+);
+```
+
+#### What gets tracked
+
+The `MaximLangchainTracer` automatically captures:
+
+- **Traces**: Top-level executions with input/output
+- **Spans**: Chain executions (sequences, parallel operations, etc.)
+- **Generations**: LLM calls with messages, model parameters, and responses
+- **Retrievals**: Vector store and retriever operations
+- **Tool Calls**: Function/tool executions
+- **Errors**: Failed operations with error details
+
+#### Supported Providers
+
+The tracer automatically detects and supports:
+
+- OpenAI (including Azure OpenAI)
+- Anthropic
+- Google (Vertex AI, Gemini)
+- Amazon Bedrock
+- Hugging Face
+- Together AI
+- Groq
+- And more...
+
+#### Custom Metadata
+
+You can pass custom metadata through LangChain's metadata system to customize how your operations appear in Maxim. All Maxim-specific metadata should be nested under the `maxim` key:
+
+```js
+const result = await chain.invoke(
+	{ topic: "AI" },
+	{
+		callbacks: [maximTracer],
+		metadata: {
+			maxim: {
+				// Your Maxim-specific metadata here
+			},
+		},
+	},
+);
+```
+
+##### Available Metadata Fields
+
+**Entity Naming**:
+
+- `traceName` - Override the default trace name
+- `chainName` - Override the default chain/span name
+- `generationName` - Override the default LLM generation name
+- `retrievalName` - Override the default retrieval operation name
+- `toolCallName` - Override the default tool call name
+
+**Entity Tagging**:
+
+- `traceTags` - Add custom tags to the trace (object: `{key: value}`)
+- `chainTags` - Add custom tags to chains/spans (object: `{key: value}`)
+- `generationTags` - Add custom tags to LLM generations (object: `{key: value}`)
+- `retrievalTags` - Add custom tags to retrieval operations (object: `{key: value}`)
+- `toolCallTags` - Add custom tags to tool calls (object: `{key: value}`)
+
+**ID References** (for linking to existing traces/sessions):
+
+- `sessionId` - Link this trace to an existing session
+- `traceId` - Use a specific trace ID
+- `spanId` - Use a specific span ID
+
+##### Complete Example
+
+```js
+const result = await chain.invoke(
+	{ query: "What is machine learning?" },
+	{
+		callbacks: [maximTracer],
+		metadata: {
+			maxim: {
+				// Custom names for better organization
+				traceName: "ML Question Answering",
+
+				// Custom tags for filtering and analytics
+				traceTags: {
+					category: "educational",
+					priority: "high",
+					version: "v2.1",
+				},
+
+				// Link to existing session (optional)
+				sessionId: "user_session_123",
+			},
+			// You can also include non-Maxim metadata
+			user_id: "user_123",
+			request_id: "req_456",
+		},
+	},
+);
+```
+
+##### Per-Component Examples
+
+**For LLM calls**:
+
+```js
+const llmResult = await model.invoke("Explain quantum computing", {
+	callbacks: [maximTracer],
+	metadata: {
+		maxim: {
+			generationName: "Quantum Computing Explanation",
+			generationTags: {
+				topic: "quantum_computing",
+				difficulty: "advanced",
+				model: "gpt-4",
+			},
+		},
+	},
+});
+```
+
+**For retrievers**:
+
+```js
+const docs = await retriever.invoke("machine learning algorithms", {
+	callbacks: [maximTracer],
+	metadata: {
+		maxim: {
+			retrievalName: "ML Algorithm Search",
+			retrievalTags: {
+				index_name: "ml_papers",
+				search_type: "semantic",
+				top_k: "5",
+			},
+		},
+	},
+});
+```
+
+**For tool calls**:
+
+```js
+const toolResult = await tool.invoke(
+	{ query: "weather in NYC" },
+	{
+		callbacks: [maximTracer],
+		metadata: {
+			maxim: {
+				toolCallName: "Weather API Lookup",
+				toolCallTags: {
+					api: "openweather",
+					location: "NYC",
+					units: "metric",
+				},
+			},
+		},
+	},
+);
+```
+
+##### Notes
+
+- **Automatic fallbacks**: If you don't provide custom names, the tracer uses sensible defaults based on the LangChain component names
+- **Session linking**: Use `sessionId` to group multiple traces under the same user session for better analytics
+
+### Legacy Langchain Integration
+
+For projects still using our separate package [Maxim Langchain Tracer](https://www.npmjs.com/package/@maximai/maxim-js-langchain) (now deprecated in favor of the built-in tracer above), you can use our built-in tracer as is by just replacing the import and installing `@langchain/core`.
+
 ## Version changelog
+
+### v6.5.0
+
+- **⚠️ BREAKING CHANGES**:
+
+  - **`Prompt.messages` type changed**: The `messages` field type has been updated for better type safety
+
+    - **Before**: `{ role: string; content: string | CompletionRequestContent[] }[]`
+    - **After**: `(CompletionRequest | ChatCompletionMessage)[]`
+    - **Migration**: Update your code to use the new `CompletionRequest` interface which has more specific role types (`"user" | "system" | "tool" | "function"`) instead of generic `string`
+
+    ```typescript
+    // Before (v6.4.x and earlier)
+    const messages: { role: string; content: string }[] = [{ role: "user", content: "Hello" }];
+
+    // After (v6.5.0+)
+    const messages: CompletionRequest[] = [
+    	{ role: "user", content: "Hello" }, // role is now type-safe
+    ];
+    ```
+
+  - **`GenerationConfig.messages` type changed**: For better type safety and tool call support
+    - **Before**: `messages: CompletionRequest[]`
+    - **After**: `messages: (CompletionRequest | ChatCompletionMessage)[]`
+    - **Migration**: Your existing `CompletionRequest[]` arrays will still work, but you can now also pass `ChatCompletionMessage[]` for assistant responses with tool calls
+  - **`Generation.addMessages()` method signature changed**:
+    - **Before**: `addMessages(messages: CompletionRequest[])`
+    - **After**: `addMessages(messages: (CompletionRequest | ChatCompletionMessage)[])`
+    - **Migration**: Your existing calls will still work, but you can now also pass assistant messages with tool calls
+  - **`MaximLogger.generationAddMessage()` method signature changed**:
+    - **Before**: `generationAddMessage(generationId: string, messages: CompletionRequest[])`
+    - **After**: `generationAddMessage(generationId: string, messages: (CompletionRequest | ChatCompletionMessage)[])`
+    - **Migration**: Your existing calls will still work, but you can now also pass assistant messages with tool calls
+
+- **feat**: Added LangChain integration with `MaximLangchainTracer`
+  - Comprehensive tracing support for LangChain and LangGraph applications
+  - Automatic detection of 8+ LLM providers (OpenAI, Anthropic, Google, Bedrock, etc.)
+  - Support for chains, agents, retrievers, and tool calls
+  - Custom metadata and tagging capabilities
+  - Added `@langchain/core` as optional dependency
+- **feat**: Enhanced prompt and prompt chain execution capabilities
+  - **NEW METHOD**: `Prompt.run(input, options?)` - Execute prompts directly from Prompt objects
+  - **NEW METHOD**: `PromptChain.run(input, options?)` - Execute prompt chains directly from PromptChain objects
+  - Support for image URLs when running prompts via `ImageUrl` type
+  - Support for variables in prompt execution
+- **feat**: New types and interfaces for improved type safety
+  - **NEW TYPE**: `PromptResponse` - Standardized response format for prompt executions
+  - **NEW TYPE**: `AgentResponse` - Standardized response format for prompt chain executions
+  - **ENHANCED TYPE**: `ChatCompletionMessage` - More specific interface for assistant messages with tool call support
+  - **ENHANCED TYPE**: `CompletionRequest` - More specific interface with type-safe roles
+  - **NEW TYPE**: `Choice`, `Usage` - Supporting types for response data with token usage
+  - **NEW TYPE**: `ImageUrl` - Type for image URL content in prompts (extracted from `CompletionRequestImageUrlContent`)
+  - **NEW TYPE**: `AgentCost`, `AgentUsage`, `AgentResponseMeta` - Supporting types for agent responses
+- **feat**: Test run improvements with prompt chain support
+  - Enhanced test run execution with cost and usage tracking for prompt chains
+  - Support for prompt chains alongside existing prompt and workflow support
+  - **NEW METHOD**: `TestRunBuilder.withPromptChainVersionId(id, contextToEvaluate?)` - Add prompt chain to test runs
+- **feat**: Enhanced exports for better developer experience
+  - **NEW EXPORT**: `MaximLangchainTracer` - Main LangChain integration class
+  - **NEW EXPORTS**: `ChatCompletionMessage`, `Choice`, `CompletionRequest`, `PromptResponse` - Core types now available for external use
+  - Enhanced type safety and IntelliSense support for prompt handling
+- **feat**: Standalone package configuration
+  - **MIGRATION**: Moved from NX monorepo to standalone package (internal change, no user action needed)
+  - Added comprehensive build, test, and lint scripts
+  - Updated TypeScript configuration for ES2022 target
+  - Added Prettier and ESLint configuration files
+  - **NEW EXPORT**: `VariableType` from dataset models
+- **deps**: LangChain ecosystem support (all optional)
+  - **NEW OPTIONAL**: `@langchain/core` as optional dependency (^0.3.0) - only needed if using `MaximLangchainTracer`
+
+**Migration Guide for v6.5.0**:
+
+1. **If you access `Prompt.messages` directly**: Update your type annotations to use `CompletionRequest | ChatCompletionMessage` types
+2. **If you create custom prompt objects**: Ensure your `messages` array uses the new interface structure
+3. **If you use `Generation.addMessages()`**: The method now accepts `(CompletionRequest | ChatCompletionMessage)[]` - your existing code will work unchanged
+4. **If you use `MaximLogger.generationAddMessage()`**: The method now accepts `(CompletionRequest | ChatCompletionMessage)[]` - your existing code will work unchanged
+5. **If you create `GenerationConfig` objects**: The `messages` field now accepts `(CompletionRequest | ChatCompletionMessage)[]` - your existing code will work unchanged
+6. **To use LangChain integration**: Install `@langchain/core` and import `MaximLangchainTracer`
+7. **No action needed for**: Regular SDK usage through `maxim.logger()`, test runs, or prompt management APIs
+
+**⚠️ Note**: While these are technically breaking changes at the type level, most existing code will continue to work because `CompletionRequest[]` is compatible with `(CompletionRequest | ChatCompletionMessage)[]`. You may only see TypeScript compilation errors if you have strict type checking enabled.
 
 ### v6.4.0
 

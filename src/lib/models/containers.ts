@@ -372,16 +372,13 @@ export class TraceContainer extends Container {
 		containerManager.addContainer(this);
 	}
 
-	create(tags?: Record<string, string>): void {
+	create(tags?: Record<string, string>, sessionId?: string): void {
 		const config: TraceConfig = {
 			id: this.id,
 			name: this._name,
 			tags,
+			sessionId,
 		};
-
-		if (this.parentId) {
-			config.sessionId = this.parentId;
-		}
 
 		this.logger.trace(config);
 		this._created = true;
