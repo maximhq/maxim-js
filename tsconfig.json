@@ -1,11 +1,12 @@
 {
 	"compilerOptions": {
 		"incremental": true,
-		"target": "ES2022",
-		"lib": ["ES2022"],
+		"target": "ES2019",
+		"lib": ["ESNEXT"],
 		"moduleResolution": "node",
 		"baseUrl": ".",
 		"module": "commonjs",
+		"types": ["node"],
 		"forceConsistentCasingInFileNames": true,
 		"strict": true,
 		"noImplicitOverride": true,

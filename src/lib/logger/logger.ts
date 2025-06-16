@@ -1,13 +1,7 @@
 import { MaximCache } from "../cache/cache";
+import { ChatCompletionMessage, CompletionRequest } from "../models/prompt";
 import { ErrorConfig, Error as MaximError } from "./components";
-import {
-	ChatCompletionResult,
-	CompletionRequest,
-	Generation,
-	GenerationConfig,
-	GenerationError,
-	TextCompletionResult,
-} from "./components/generation";
+import { ChatCompletionResult, Generation, GenerationConfig, GenerationError, TextCompletionResult } from "./components/generation";
 import { Retrieval, RetrievalConfig } from "./components/retrieval";
 import { Session, SessionConfig } from "./components/session";
 import { Span, SpanConfig } from "./components/span";
@@ -181,7 +175,11 @@ export class MaximLogger {
 		Generation.setModel_(this.writer, generationId, model);
 	}
 
-	public generationAddMessage(generationId: string, messages: CompletionRequest[]) {
+	public generationAddTag(generationId: string, key: string, value: string) {
+		Generation.addTag_(this.writer, Entity.GENERATION, generationId, key, value);
+	}
+
+	public generationAddMessage(generationId: string, messages: (CompletionRequest | ChatCompletionMessage)[]) {
 		Generation.addMessages_(this.writer, generationId, messages);
 	}
 
@@ -303,6 +301,10 @@ export class MaximLogger {
 
 	public toolCallError(toolCallId: string, error: ToolCallError) {
 		return ToolCall.error_(this.writer, toolCallId, error);
+	}
+
+	public toolCallAddTag(toolCallId: string, key: string, value: string) {
+		ToolCall.addTag_(this.writer, Entity.TOOL_CALL, toolCallId, key, value);
 	}
 
 	public toolCallMetadata(toolCallId: string, metadata: Record<string, unknown>) {
