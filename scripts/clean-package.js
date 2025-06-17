@@ -12,6 +12,9 @@ const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 delete packageJson.devDependencies;
 
 // Remove scripts that are only needed for development
+delete packageJson.scripts;
+
+// Remove scripts that are only needed for development
 const scriptsToRemove = ["lint", "test", "clean", "prebuild"];
 if (packageJson.scripts) {
 	scriptsToRemove.forEach((script) => {
