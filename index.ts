@@ -2,7 +2,6 @@ export * from "./src/lib/cache/cache";
 export * from "./src/lib/dataset/dataset";
 export * from "./src/lib/evaluators/evaluators";
 export * from "./src/lib/logger/components";
-export { MaximLangchainTracer } from "./src/lib/logger/langchain/tracer";
 export * from "./src/lib/logger/logger";
 export * from "./src/lib/maxim";
 export * from "./src/lib/models/cache";
