@@ -61,7 +61,7 @@ export type CSVWriteOptions = {
  *   "age": 3
  * };
  */
-type ColumnStructure = Record<string, number>;
+export type ColumnStructure = Record<string, number>;
 
 /**
  * Represents a CSV file with optional type information for its columns.
@@ -602,7 +602,10 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 		return row
 			.map((field) => {
 				if (field.includes(options.delimiter ?? ",") || field.includes(options.quoteChar ?? '"') || field.includes("\n")) {
-					return `${options.quoteChar}${field.replace(new RegExp(options.quoteChar ?? '"', "g"), options.escapeChar ?? '"' + options.quoteChar ?? '"')}${options.quoteChar ?? '"'}`;
+					return `${options.quoteChar}${field.replace(
+						new RegExp(options.quoteChar ?? '"', "g"),
+						(options.escapeChar ?? '"') + (options.quoteChar ?? '"'),
+					)}${options.quoteChar ?? '"'}`;
 				}
 				return field;
 			})
