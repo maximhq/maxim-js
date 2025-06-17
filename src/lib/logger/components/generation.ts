@@ -5,12 +5,18 @@ import { Attachment } from "./attachment";
 import { EvaluatableBaseContainer } from "./base";
 import { Entity } from "./types";
 
+/**
+ * Represents an error that occurred during LLM generation.
+ */
 export interface GenerationError {
 	message: string;
 	code?: string;
 	type?: string;
 }
 
+/**
+ * Represents the result of an LLM chat completion.
+ */
 export interface ChatCompletionResult {
 	id: string;
 	object: string;
@@ -21,6 +27,9 @@ export interface ChatCompletionResult {
 	error?: GenerationError;
 }
 
+/**
+ * Represents the result of an LLM text completion.
+ */
 export interface TextCompletionResult {
 	id: string;
 	object: string;
@@ -52,12 +61,18 @@ interface TextCompletionChoice {
 	finish_reason: string;
 }
 
+/**
+ * Token usage statistics for a generation request.
+ */
 interface Usage {
 	prompt_tokens: number;
 	completion_tokens: number;
 	total_tokens: number;
 }
 
+/**
+ * Configuration object for generation.
+ */
 export type GenerationConfig = {
 	id: string;
 	name?: string;
@@ -69,12 +84,67 @@ export type GenerationConfig = {
 	tags?: Record<string, string>;
 };
 
+/**
+ * Represents an LLM generation or completion.
+ *
+ * The Generation class tracks the complete lifecycle of LLM requests,
+ * including input messages, model parameters, results, and any errors.
+ * It supports both chat and text completion formats.
+ *
+ * @class Generation
+ * @extends EvaluatableBaseContainer
+ * @example
+ * const generation = container.generation({
+ *   id: 'gen-001',
+ *   name: 'User Query Response',
+ *   provider: 'openai',
+ *   model: 'gpt-4',
+ *   messages: [
+ *     { role: 'system', content: 'You are a helpful assistant.' },
+ *     { role: 'user', content: 'What is the capital of France?' }
+ *   ],
+ *   modelParameters: { temperature: 0.7, max_tokens: 150 }
+ * });
+ *
+ * // Record the result
+ * generation.result({
+ *   id: 'cmpl-123',
+ *   object: 'chat.completion',
+ *   created: Date.now(),
+ *   model: 'gpt-4',
+ *   choices: [{
+ *     index: 0,
+ *     message: { role: 'assistant', content: 'The capital of France is Paris.' },
+ *     finish_reason: 'stop',
+ *     logprobs: null
+ *   }],
+ *   usage: { prompt_tokens: 25, completion_tokens: 8, total_tokens: 33 }
+ * });
+ */
 export class Generation extends EvaluatableBaseContainer {
 	private model?: string;
 	private provider?: string;
 	private maximPromptId?: string;
 	private modelParameters?: Record<string, any>;
 
+	/**
+	 * Creates a new generation log entry.
+	 *
+	 * @param config - Configuration object defining the generation
+	 * @param writer - Log writer instance for persisting generation data
+	 * @example
+	 * const generation = container.generation({
+	 *   id: 'response-gen-001',
+	 *   name: 'Customer Query Response',
+	 *   provider: 'openai',
+	 *   model: 'gpt-4',
+	 *   messages: [
+	 *     { role: 'system', content: 'You are a helpful assistant.' },
+	 *     { role: 'user', content: 'How do I reset my password?' }
+	 *   ],
+	 *   modelParameters: { temperature: 0.7, max_tokens: 200 }
+	 * });
+	 */
 	constructor(config: GenerationConfig, writer: LogWriter) {
 		// Extract attachments from messages before calling super constructor
 		const [processedMessages, attachments] = parseAttachmentsFromMessages(config.messages);
@@ -97,15 +167,41 @@ export class Generation extends EvaluatableBaseContainer {
 		}
 	}
 
+	/**
+	 * Updates the model being used for this generation.
+	 *
+	 * @param model - The new model name or identifier
+	 * @returns void
+	 * @example
+	 * generation.setModel('gpt-4-turbo');
+	 */
 	public setModel(model: string) {
 		this.model = model;
 		this.commit("update", { model });
 	}
 
+	/**
+	 * Static method to update the model for any generation by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The generation ID
+	 * @param model - The new model name
+	 * @returns void
+	 */
 	public static setModel_(writer: LogWriter, id: string, model: string) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "update", { model });
 	}
 
+	/**
+	 * Adds additional messages to this generation's conversation.
+	 *
+	 * @param messages - Array of messages to add
+	 * @returns void
+	 * @example
+	 * generation.addMessages([
+	 *   { role: 'user', content: 'Can you clarify that?' },
+	 * ]);
+	 */
 	public addMessages(messages: (CompletionRequest | ChatCompletionMessage)[]) {
 		// Extract attachments from messages
 		const [processedMessages, attachments] = parseAttachmentsFromMessages(messages);
@@ -119,6 +215,14 @@ export class Generation extends EvaluatableBaseContainer {
 		}
 	}
 
+	/**
+	 * Static method to add messages to any generation by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The generation ID
+	 * @param messages - Array of messages to add
+	 * @returns void
+	 */
 	public static addMessages_(writer: LogWriter, id: string, messages: (CompletionRequest | ChatCompletionMessage)[]) {
 		// Extract attachments from messages
 		const [processedMessages, attachments] = parseAttachmentsFromMessages(messages);
@@ -132,46 +236,139 @@ export class Generation extends EvaluatableBaseContainer {
 		}
 	}
 
+	/**
+	 * Updates the model parameters for this generation.
+	 *
+	 * @param modelParameters - Object containing model-specific parameters
+	 * @returns void
+	 * @example
+	 * generation.setModelParameters({
+	 *   temperature: 0.9,
+	 *   max_tokens: 500,
+	 *   top_p: 0.95,
+	 *   frequency_penalty: 0.2
+	 * });
+	 */
 	public setModelParameters(modelParameters: Record<string, any>) {
 		this.commit("update", { modelParameters });
 	}
 
+	/**
+	 * Static method to update model parameters for any generation by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The generation ID
+	 * @param modelParameters - Model parameters to update
+	 * @returns void
+	 */
 	public static setModelParameters_(writer: LogWriter, id: string, modelParameters: Record<string, any>) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "update", { modelParameters });
 	}
 
+	/**
+	 * Records the successful result of this generation and ends it.
+	 *
+	 * @param result - The completion result from the LLM
+	 * @returns void
+	 * @example
+	 * generation.result({
+	 *   id: 'cmpl-123',
+	 *   object: 'chat.completion',
+	 *   created: Date.now(),
+	 *   model: 'gpt-4',
+	 *   choices: [{
+	 *     index: 0,
+	 *     message: { role: 'assistant', content: 'Here is the answer...' },
+	 *     finish_reason: 'stop',
+	 *     logprobs: null
+	 *   }],
+	 *   usage: { prompt_tokens: 50, completion_tokens: 25, total_tokens: 75 }
+	 * });
+	 */
 	public result(result: TextCompletionResult | ChatCompletionResult) {
 		this.commit("result", { result });
 		this.end();
 	}
 
+	/**
+	 * Static method to record a result for any generation by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The generation ID
+	 * @param result - The completion result
+	 * @returns void
+	 */
 	public static result_(writer: LogWriter, id: string, result: TextCompletionResult | ChatCompletionResult) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "result", { result });
 		EvaluatableBaseContainer.end_(writer, Entity.GENERATION, id, { endTimestamp: utcNow() });
 	}
 
+	/**
+	 * Records an error that occurred during this generation.
+	 *
+	 * @param error - Error information including message, code, and type
+	 * @returns void
+	 * @example
+	 * generation.error({
+	 *   message: 'API request timed out',
+	 *   code: 'TIMEOUT_ERROR',
+	 *   type: 'NetworkError'
+	 * });
+	 */
 	public error(error: GenerationError) {
 		this.commit("result", { result: { error: error, id: uniqueId() } });
 		this.end();
 	}
 
+	/**
+	 * Static method to record an error for any generation by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The generation ID
+	 * @param error - Error information
+	 * @returns void
+	 */
 	public static error_(writer: LogWriter, id: string, error: GenerationError) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "result", { result: { error: error, id: uniqueId() } });
 		EvaluatableBaseContainer.end_(writer, Entity.GENERATION, id, { endTimestamp: utcNow() });
 	}
 
+	/**
+	 * Adds an attachment to this generation (can be of type `file`, `data`, or `url`).
+	 *
+	 * @param attachment - The attachment to add (file, data, or URL)
+	 * @returns void
+	 * @example
+	 * generation.addAttachment({
+	 *   id: 'input-document',
+	 *   type: 'file',
+	 *   path: './uploads/user_document.pdf',
+	 *   name: 'User Document'
+	 * });
+	 */
 	public addAttachment(attachment: Attachment) {
 		this.commit("upload-attachment", attachment);
 	}
 
+	/**
+	 * Static method to add an attachment to any generation by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The generation ID
+	 * @param attachment - The attachment to add
+	 * @returns void
+	 */
 	public static addAttachment_(writer: LogWriter, id: string, attachment: Attachment) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "upload-attachment", attachment);
 	}
 
-	public static override end_(writer: LogWriter, id: string, data?: any) {
-		EvaluatableBaseContainer.end_(writer, Entity.GENERATION, id, data);
-	}
-
+	/**
+	 * Returns the complete data representation of this generation.
+	 *
+	 * @returns Generation data.
+	 * @example
+	 * const genData = generation.data();
+	 */
 	public override data(): any {
 		return {
 			...super.data(),
@@ -183,10 +380,6 @@ export class Generation extends EvaluatableBaseContainer {
 	}
 }
 
-/**
- * Parses attachments from messages and returns modified messages with extracted attachments
- * Similar to Python's parse_attachments_from_messages function
- */
 function parseAttachmentsFromMessages(
 	messages: (CompletionRequest | ChatCompletionMessage)[],
 ): [(CompletionRequest | ChatCompletionMessage)[], Attachment[]] {

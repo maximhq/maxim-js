@@ -3,7 +3,9 @@ import * as mimeTypes from "mime-types";
 import * as path from "path";
 import { uniqueId } from "../utils";
 
-// Common properties for all attachment types
+/**
+ * Base properties shared by all attachment types in the Maxim logging system.
+ */
 export type BaseAttachmentProps = {
 	id: string;
 	name?: string;
@@ -13,34 +15,68 @@ export type BaseAttachmentProps = {
 	metadata?: Record<string, string>;
 };
 
-// File attachment type
+/**
+ * File attachment type for referencing files on the local filesystem.
+ */
 export type FileAttachment = BaseAttachmentProps & {
 	type: "file";
 	path: string;
 };
+
+/**
+ * File attachment with storage key for internal processing.
+ */
 export type FileAttachmentWithKey = FileAttachment & { key: string };
 
-// File data attachment type
+/**
+ * File data attachment type for directly embedding binary data.
+ */
 export type FileDataAttachment = BaseAttachmentProps & {
 	type: "fileData";
 	data: Buffer;
 };
+
+/**
+ * File data attachment with storage key for internal processing.
+ */
 export type FileDataAttachmentWithKey = FileDataAttachment & { key: string };
 
-// URL attachment type
+/**
+ * URL attachment type for referencing external resources.
+ */
 export type UrlAttachment = BaseAttachmentProps & {
 	type: "url";
 	url: string;
 };
+
+/**
+ * URL attachment with storage key for internal processing.
+ */
 export type UrlAttachmentWithKey = UrlAttachment & { key: string };
 
-// Discriminated union type
+/**
+ * Discriminated union type representing all possible attachment types.
+ */
 export type Attachment = FileAttachment | FileDataAttachment | UrlAttachment;
+
+/**
+ * Attachment with storage key for internal processing.
+ */
 export type AttachmentWithKey = FileAttachmentWithKey | FileDataAttachmentWithKey | UrlAttachmentWithKey;
 
 /**
- * Auto-populates missing fields in an attachment based on available information
- * This is intended for internal use when processing attachments
+ * Auto-populates missing fields in an attachment based on available information.
+ *
+ * This utility function automatically fills in missing properties like name, MIME type,
+ * and size based on the attachment type and content. For file attachments, it reads
+ * filesystem metadata. For data attachments, it performs content analysis. For URL
+ * attachments, it extracts information from the URL structure.
+ *
+ * @template T - The specific attachment type being processed
+ * @param attachment - The attachment object to populate
+ * @returns A new attachment object with auto-populated fields
+ * Note: The function suppresses I/O errors when reading file metadata; in such
+ * cases the size property remains undefined.
  */
 export function populateAttachmentFields<T extends Attachment>(attachment: T): T {
 	// Make a copy to avoid mutating the original
