@@ -17,7 +17,7 @@ export type ExtractAPIDataType<T> = T extends { data: infer D } ? D : never;
 /**
  * Generates a collision-resistant unique identifier (CUID)
  * Format: c<timestamp><counter><fingerprint><random>
- * @returns {string} A unique identifier string
+ * @returns A unique identifier string
  */
 export function generateCuid(): string {
 	// Current timestamp

@@ -37,6 +37,58 @@ export type CombinedLocalEvaluatorType<T extends DataStructure | undefined, U ex
 	passFailCriteria: U;
 };
 
+/**
+ * Result object containing the outcome of a local evaluator execution.
+ *
+ * Represents the complete evaluation result from running a local evaluator
+ * on a single test run entry, including the score, reasoning, evaluator name,
+ * and the pass/fail criteria used for assessment.
+ *
+ * @property result - The evaluation result containing score and optional reasoning
+ * @property name - The name of the evaluator that produced this result
+ * @property passFailCriteria - The criteria used to determine pass/fail status
+ * @example
+ * // Example result from a custom evaluator
+ * const evaluationResult: LocalEvaluationResult = {
+ *   result: {
+ *     score: 0.85,
+ *     reasoning: "Response demonstrates good accuracy with minor factual errors"
+ *   },
+ *   name: "accuracy-checker",
+ *   passFailCriteria: {
+ *     onEachEntry: {
+ *       scoreShouldBe: ">=",
+ *       value: 0.7
+ *     },
+ *     forTestrunOverall: {
+ *       overallShouldBe: ">=",
+ *       value: 80,
+ *       for: "percentageOfPassedResults"
+ *     }
+ *   }
+ * };
+ *
+ * @example
+ * // Boolean evaluation result
+ * const booleanResult: LocalEvaluationResult = {
+ *   result: {
+ *     score: true,
+ *     reasoning: "Output contains required keywords"
+ *   },
+ *   name: "keyword-validator",
+ *   passFailCriteria: {
+ *     onEachEntry: {
+ *       scoreShouldBe: "=",
+ *       value: true
+ *     },
+ *     forTestrunOverall: {
+ *       overallShouldBe: ">=",
+ *       value: 90,
+ *       for: "percentageOfPassedResults"
+ *     }
+ *   }
+ * };
+ */
 export type LocalEvaluationResult = {
 	result: LocalEvaluatorReturnType;
 	name: string;

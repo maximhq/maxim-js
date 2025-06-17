@@ -3,7 +3,29 @@ import { EOL } from "os";
 import { Transform, TransformCallback } from "stream";
 
 /**
- * Options for parsing CSV files.
+ * Configuration options for parsing CSV files.
+ *
+ * @property delimiter - Character used to separate fields in the CSV
+ * @property hasHeader - Whether the first row contains column headers
+ * @property quoteChar - Character used to quote fields containing special characters
+ * @property escapeChar - Character used to escape quote characters within quoted fields
+ * @example
+ * // Default CSV parsing
+ * const options: CSVParseOptions = {
+ *   delimiter: ",",
+ *   hasHeader: true,
+ *   quoteChar: '"',
+ *   escapeChar: '"'
+ * };
+ *
+ * @example
+ * // Tab-separated values without headers
+ * const tsvOptions: CSVParseOptions = {
+ *   delimiter: "\t",
+ *   hasHeader: false,
+ *   quoteChar: "'",
+ *   escapeChar: "\\"
+ * };
  */
 export type CSVParseOptions = {
 	delimiter?: string;
@@ -13,7 +35,12 @@ export type CSVParseOptions = {
 };
 
 /**
- * Options for writing CSV files.
+ * Configuration options for writing CSV files.
+ *
+ * @property delimiter - Character used to separate fields
+ * @property includeHeader - Whether to include column headers in the output
+ * @property quoteChar - Character used to quote fields containing special characters
+ * @property escapeChar - Character used to escape quote characters within quoted fields
  */
 export type CSVWriteOptions = {
 	delimiter?: string;
@@ -23,12 +50,57 @@ export type CSVWriteOptions = {
 };
 
 /**
- * Represents the structure of columns in a CSV file.
+ * Type representing the structure of columns in a CSV file.
+ * Maps column names to their zero-based index positions.
+ *
+ * @example
+ * const structure: ColumnStructure = {
+ *   "firstName": 0,
+ *   "lastName": 1,
+ *   "email": 2,
+ *   "age": 3
+ * };
  */
 type ColumnStructure = Record<string, number>;
 
 /**
  * Represents a CSV file with optional type information for its columns.
+ *
+ * Provides methods for reading, parsing, and manipulating CSV data with
+ * optional type safety through column structure definitions. Supports
+ * both streaming and batch operations for efficient processing of large files.
+ *
+ * @template T - Optional column structure type for typed access
+ * @class CSVFile
+ * @example
+ * // Basic usage without column structure
+ * const csvFile = new CSVFile("data.csv");
+ * const rowCount = await csvFile.getRowCount();
+ * const firstRow = await csvFile.getRow(0);
+ *
+ * @example
+ * // With typed column structure
+ * const typedCSV = new CSVFile("users.csv", {
+ *   name: 0,
+ *   email: 1,
+ *   age: 2
+ * });
+ *
+ * const user = await typedCSV.getRow(0);
+ * console.log(user.name, user.email, user.age); // Type-safe access
+ *
+ * @example
+ * // Filtering and mapping
+ * const adults = await csvFile.filter(row => parseInt(row.age) >= 18);
+ * const names = await csvFile.map(row => row.name.toUpperCase());
+ *
+ * @example
+ * // Writing data to CSV
+ * await CSVFile.writeToFile(
+ *   [{ name: "John", email: "john@example.com" }],
+ *   "output.csv",
+ *   { name: 0, email: 1 }
+ * );
  */
 export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 	private filePath: string;
@@ -41,12 +113,30 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 
 	/**
 	 * Creates a new CSVFile instance.
-	 * @param filePath The path to the CSV file.
-	 * @param columnStructure Optional column structure for typed access. (maps column names to column indices)
-	 * @param options Optional parsing options.
-	 * @throws {Error} if column structure is provided and headers don't match.
+	 *
+	 * @param filePath - The path to the CSV file
+	 * @param columnStructure - Optional column structure mapping column names to indices
+	 * @param options - Optional parsing configuration
+	 * @throws {Error} When column structure is provided but doesn't match the file headers
 	 * @example
-	 * const csvFile = new CSVFile("path/to/file.csv", { column1: 0, column2: 1 });
+	 * // Simple CSV file
+	 * const csv = new CSVFile("data.csv");
+	 *
+	 * @example
+	 * // With column structure for type safety
+	 * const csv = new CSVFile("users.csv", {
+	 *   id: 0,
+	 *   name: 1,
+	 *   email: 2
+	 * });
+	 *
+	 * @example
+	 * // With custom parsing options
+	 * const csv = new CSVFile("data.tsv", undefined, {
+	 *   delimiter: "\t",
+	 *   hasHeader: false,
+	 *   quoteChar: "'"
+	 * });
 	 */
 	constructor(filePath: string, columnStructure?: T, options: CSVParseOptions = {}) {
 		this.filePath = filePath;
@@ -66,8 +156,11 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 
 	/**
 	 * Validates the headers of the CSV file against the provided column structure.
+	 *
 	 * @private
-	 * @throws {Error} if headers don't match the column structure.
+	 * @async
+	 * @returns
+	 * @throws {Error} When headers don't match the column structure
 	 */
 	private async validateHeaders(): Promise<void> {
 		const headerRow = await this.getHeader();
@@ -99,10 +192,11 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 	}
 
 	/**
-	 * Parses a single row of the CSV file.
+	 * Parses a single row of the CSV file, handling quotes and escaping.
+	 *
 	 * @private
-	 * @param row The row to parse.
-	 * @returns An array of parsed fields.
+	 * @param row - The raw row string to parse
+	 * @returns Array of parsed field values
 	 */
 	private parseRow(row: string): string[] {
 		const { delimiter, quoteChar, escapeChar } = this.options;
@@ -144,7 +238,13 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 
 	/**
 	 * Gets the total number of rows in the CSV file.
-	 * @returns A promise that resolves to the number of rows.
+	 *
+	 * @async
+	 * @returns The total number of rows (excluding header if present)
+	 * @example
+	 * const csv = new CSVFile("large-dataset.csv");
+	 * const totalRows = await csv.getRowCount();
+	 * console.log(`Dataset contains ${totalRows} records`);
 	 */
 	async getRowCount(): Promise<number> {
 		if (this.rowCount === null) {
@@ -159,8 +259,13 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 
 	/**
 	 * Gets the number of columns in the CSV file.
-	 * @returns A promise that resolves to the number of columns.
-	 * @throws {Error} if unable to read the header row.
+	 *
+	 * @async
+	 * @returns The number of columns
+	 * @throws {Error} When unable to read the header row
+	 * @example
+	 * const columnCount = await csv.getColumnCount();
+	 * console.log(`CSV has ${columnCount} columns`);
 	 */
 	async getColumnCount(): Promise<number> {
 		if (this.columnCount === null) {
@@ -175,8 +280,13 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 
 	/**
 	 * Gets the header row of the CSV file.
-	 * @returns A promise that resolves to an array of header fields, or null if there's no header.
-	 * @throws {Error} if unable to read the header row.
+	 *
+	 * @async
+	 * @returns Array of header field names, or null if no header
+	 * @throws {Error} When unable to read the header row
+	 * @example
+	 * const headers = await csv.getHeader();
+	 * console.log("Columns:", headers); // ["name", "email", "age"]
 	 */
 	async getHeader(): Promise<string[] | null> {
 		if (this.headerRow === null) {
