@@ -31,7 +31,7 @@ export type QueryRule = {
 	scopes: Scopes;
 };
 
-type Scopes = { [key: string]: string };
+export type Scopes = { [key: string]: string };
 
 /**
  * Builder class for constructing queries to filter prompts and prompt chains.

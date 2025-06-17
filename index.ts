@@ -8,10 +8,34 @@ export { wrapMaximAISDKModel } from "./src/lib/logger/vercel/wrapper";
 export * from "./src/lib/maxim";
 export * from "./src/lib/models/cache";
 export { VariableType } from "./src/lib/models/dataset";
-export type { Data } from "./src/lib/models/dataset";
-export type { LocalEvaluationResult } from "./src/lib/models/evaluator";
-export type { ChatCompletionMessage, Choice, CompletionRequest, PromptResponse } from "./src/lib/models/prompt";
+export type {
+    ContextToEvaluateColumn, Data, DatasetEntry, DataStructure, DataValue, ExpectedOutputColumn, InputColumn, MapDataStructureToValue, NullableVariableColumn,
+    Variable, VariableColumn
+} from "./src/lib/models/dataset";
+export type {
+    CombinedLocalEvaluatorType, HumanEvaluationConfig, LocalEvaluationResult, LocalEvaluatorType, OperatorType, PassFailCriteriaType
+} from "./src/lib/models/evaluator";
+export type {
+    ChatCompletionMessage, ChatCompletionToolCall, Choice,
+    CompletionRequest, CompletionRequestContent, CompletionRequestImageUrlContent, CompletionRequestTextContent, ImageUrl,
+    Prompt, PromptResponse, PromptTags,
+    PromptTagValues, Usage as PromptUsage, PromptVersion,
+    PromptVersionConfig, PromptVersionsAndRules, ToolCallFunction
+} from "./src/lib/models/prompt";
 export * from "./src/lib/models/queryBuilder";
-export type { TestRunLogger, TestRunResult, YieldedOutput } from "./src/lib/models/testRun";
+export type { TestRunBuilder, TestRunConfig, TestRunLogger, TestRunResult, YieldedOutput } from "./src/lib/models/testRun";
 export * from "./src/lib/utils/csvParser";
+// Additional exports for complete documentation coverage
+export type { MaximLogsAPI } from "./src/lib/apis/logs";
+export type {
+    Attachment, BaseAttachmentProps, FileAttachment,
+    FileDataAttachment,
+    UrlAttachment
+} from "./src/lib/logger/components/attachment";
+export type { ChatCompletionChoice, Logprobs, TextCompletionChoice, Usage } from "./src/lib/logger/components/generation";
+export { LogWriter } from "./src/lib/logger/writer";
+export type { LogWriterConfig } from "./src/lib/logger/writer";
+export type { DeploymentVersionDeploymentConfig, VersionSpecificDeploymentConfig } from "./src/lib/models/deployment";
+export type { Folder } from "./src/lib/models/folder";
+export type { AgentResponse, AgentResponseMeta, PromptChain, PromptNode } from "./src/lib/models/promptChain";
 
