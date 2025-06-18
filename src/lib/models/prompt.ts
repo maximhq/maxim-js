@@ -4,12 +4,12 @@ export type PromptTags = {
 	[key: string]: string | number | boolean | undefined;
 };
 
-interface ToolCallFunction {
+export interface ToolCallFunction {
 	arguments: string;
 	name: string;
 }
 
-interface ToolCall {
+export interface ChatCompletionToolCall {
 	id: string;
 	function: ToolCallFunction;
 	type: string;
@@ -53,7 +53,7 @@ export interface ChatCompletionMessage {
 	role: "assistant";
 	content: string | null;
 	function_call?: ToolCallFunction;
-	tool_calls?: Array<ToolCall>;
+	tool_calls?: Array<ChatCompletionToolCall>;
 }
 
 export type CompletionRequestTextContent = {
