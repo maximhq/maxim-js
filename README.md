@@ -308,6 +308,30 @@ const toolResult = await tool.invoke(
 - **Automatic fallbacks**: If you don't provide custom names, the tracer uses sensible defaults based on the LangChain component names
 - **Session linking**: Use `sessionId` to group multiple traces under the same user session for better analytics
 
+### Vercel AI SDK
+
+Use Maxim's OpenTelemetry endpoint to capture AI SDK traces:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=https://api.getmaxim.ai/v1/otel \
+OTEL_EXPORTER_OTLP_HEADERS="x-maxim-api-key=<YOUR_API_KEY>,x-maxim-logger-id=<LOG_REPOSITORY_ID>"
+```
+
+Then enable telemetry when calling the AI SDK:
+
+```ts
+import { generateText } from "ai";
+import { initMaximOtel } from "@maximai/maxim-js";
+
+initMaximOtel({ apiKey: "<YOUR_API_KEY>", loggerId: "<LOG_REPOSITORY_ID>" });
+
+await generateText({
+        model,
+        prompt: "Hello",
+        experimental_telemetry: { isEnabled: true },
+});
+```
+
 ### Legacy Langchain Integration
 
 For projects still using our separate package [Maxim Langchain Tracer](https://www.npmjs.com/package/@maximai/maxim-js-langchain) (now deprecated in favor of the built-in tracer above), you can use our built-in tracer as is by just replacing the import and installing `@langchain/core`.
