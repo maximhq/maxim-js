@@ -5,7 +5,7 @@ import {
   LanguageModelV1Prompt,
   LanguageModelV1StreamPart,
 } from "@ai-sdk/provider";
-import { CompletionRequestContent } from "src/lib/models/prompt";
+import { CompletionRequestContent } from "../../models/prompt";
 
 export function determineProvider(
   model: string,
@@ -79,14 +79,15 @@ export function parsePromptMessages(prompt: LanguageModelV1Prompt): Array<Comple
 
   const promptMessages: Array<CompletionRequest | ChatCompletionMessage> = prompt.map((promptMsg) => {
     switch (promptMsg.role) {
-      case "system":
+      case "system": {
         return [
           {
             role: "system",
             content: promptMsg.content,
           },
         ] as Array<CompletionRequest | ChatCompletionMessage>
-      case "user":
+      }
+      case "user": {
         return [
           {
             role: "user",
@@ -110,7 +111,8 @@ export function parsePromptMessages(prompt: LanguageModelV1Prompt): Array<Comple
             }),
           }
         ] as Array<CompletionRequest | ChatCompletionMessage>
-      case "assistant":
+      }
+      case "assistant": {
         const assistantText = promptMsg.content.find((msg) => msg.type === "text");
         const assistantToolCalls = promptMsg.content.filter((msg) => msg.type === "tool-call");
         return [
@@ -127,12 +129,14 @@ export function parsePromptMessages(prompt: LanguageModelV1Prompt): Array<Comple
             }))
           },
         ] as Array<CompletionRequest | ChatCompletionMessage>;
-      case "tool":
+      }
+      case "tool": {
         return promptMsg.content.map((part) => ({
           role: "tool",
           tool_call_id: part.toolCallId,
           content: JSON.stringify(part.result),
         })) as Array<CompletionRequest | ChatCompletionMessage>;
+      }
     }
   }).flat()
 
@@ -204,7 +208,7 @@ function processChunks(chunks: LanguageModelV1StreamPart[]) {
     promptTokens: number,
     completionTokens: number
   } | undefined = undefined;
-  let finishReason = ""
+  let finishReason: string | undefined = undefined;
 
   for (const chunk of chunks) {
     switch (chunk.type) {
