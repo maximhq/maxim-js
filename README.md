@@ -308,28 +308,145 @@ const toolResult = await tool.invoke(
 - **Automatic fallbacks**: If you don't provide custom names, the tracer uses sensible defaults based on the LangChain component names
 - **Session linking**: Use `sessionId` to group multiple traces under the same user session for better analytics
 
-### Vercel AI SDK
+### AI SDK
 
-Use Maxim's OpenTelemetry endpoint to capture AI SDK traces:
-
-```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=https://api.getmaxim.ai/v1/otel \
-OTEL_EXPORTER_OTLP_HEADERS="x-maxim-api-key=<YOUR_API_KEY>,x-maxim-logger-id=<LOG_REPOSITORY_ID>"
-```
-
-Then enable telemetry when calling the AI SDK:
+Use the built-in `wrapMaximAISDKModel` to wrap provider models and integrate Maxim observability and logging with your agents using Vercel AI SDK.
 
 ```ts
-import { generateText } from "ai";
-import { initMaximOtel } from "@maximai/maxim-js";
+const model = wrapMaximAISDKModel(anthropic('claude-3-5-sonnet-20241022'), logger);
+```
+You can pass this wrapped model in your generation functions to enable logging integration with Maxim.
 
-initMaximOtel({ apiKey: "<YOUR_API_KEY>", loggerId: "<LOG_REPOSITORY_ID>" });
-
-await generateText({
-        model,
-        prompt: "Hello",
-        experimental_telemetry: { isEnabled: true },
+```ts
+const query = "Hello";
+const response = await generateText({
+	model: model,
+	prompt: query,
 });
+console.log("OpenAI response for generateText", response.text);
+```
+
+#### Custom metadata
+You can customize the behavior of the operations in Maxim by passing in custom metadata. Use the `providerOptions` property to pass in an object with the key of `maxim` to use this behavior.
+```ts
+streamText({
+	model: model,
+	// other model parameters
+	providerOptions: {
+		maxim: {
+			traceName: "custom-trace-name",
+			traceTags: {
+				type: "demo",
+				priority: "high"
+			}
+		}
+	}
+});
+```
+
+##### Available metadata fields
+**Entity Naming**:
+
+- `sessionName` - Override the default session name
+- `traceName` - Override the default trace name
+- `chainName` - Override the default chain/span name
+- `generationName` - Override the default LLM generation name
+
+**Entity Tagging**:
+
+- `sessionTags` - Add custom tags to the session (object: `{key: value}`)
+- `traceTags` - Add custom tags to the trace (object: `{key: value}`)
+- `chainTags` - Add custom tags to chains/spans (object: `{key: value}`)
+- `generationTags` - Add custom tags to LLM generations (object: `{key: value}`)
+
+**ID References** (for linking to existing traces/sessions):
+
+- `sessionId` - Link this trace to an existing session
+- `traceId` - Use a specific trace ID
+- `spanId` - Use a specific span ID
+
+##### Note
+You can get type-completion for the `maxim` metadata object using the `MaximVercelProviderMetadata` type from `@maximai/maxim-js`
+
+```ts
+streamText({
+	model: model,
+	// other model parameters
+	providerOptions: {
+		maxim: {
+			traceName: "custom-trace-name",
+			traceTags: {
+				type: "demo",
+				priority: "high"
+			}
+		} as MaximVercelProviderMetadata
+	}
+});
+```
+
+#### Complete example
+```ts
+const logger = await maxim.logger({ id: repoId });
+if (!logger) {
+	throw new Error("Logger is not available");
+}
+
+const model = wrapMaximAISDKModel(openai.chat('gpt-4o-mini'), logger);
+const spanId = uuid();
+const trace = logger.trace({ id: uuid(), name: "Demo trace" })
+const prompt = "Predict the top 3 largest city by 2050. For each, return the name, the country, the reason why it will on the list, and the estimated population in millions."
+trace.input(prompt);
+
+try {
+	const { text: rawOutput } = await generateText({
+		model: model,
+		prompt: prompt,
+		providerOptions: {
+			maxim: {
+				traceName: "Demo Trace",
+				traceId: trace.id,
+				spanId: spanId,
+			} as MaximVercelProviderMetadata
+		}
+	});
+
+	const { object } = await generateObject({
+		model: model,
+		prompt: 'Extract the desired information from this text: \n' + rawOutput,
+		schema: z.object({
+			name: z.string().describe('the name of the city'),
+			country: z.string().describe('the name of the country'),
+			reason: z
+				.string()
+				.describe(
+					'the reason why the city will be one of the largest cities by 2050',
+				),
+			estimatedPopulation: z.number(),
+		}),
+		output: 'array',
+		providerOptions: {
+			maxim: {
+				traceId: trace.id,
+				spanId: spanId,
+			} as MaximVercelProviderMetadata
+		}
+	});
+	
+	const { text: output } = await generateText({
+		model: model,
+		prompt: `Format this into a human-readable format: ${JSON.stringify(object)}`,
+		providerOptions: {
+			maxim: {
+				traceId: trace.id,
+			} as MaximVercelProviderMetadata
+		}
+	});
+	trace.end();
+
+	console.log("OpenAI response for demo **trace**", output);
+} catch (error) {
+	console.error("Error in demo trace", error);
+}
 ```
 
 ### Legacy Langchain Integration

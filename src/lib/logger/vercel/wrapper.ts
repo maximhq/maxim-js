@@ -27,16 +27,16 @@ class MaximAISDKWrapper implements LanguageModelV1 {
     const promptMessages = parsePromptMessages(options.prompt);
     let session: Session | undefined = undefined;
     let generation: Generation | undefined = undefined;
-    
+
     // If sessionId is passed, then create a session on Maxim. If not passed, do not create a session
-    if(maximMetadata?.sessionId) {
+    if (maximMetadata?.sessionId) {
       session = this.logger.session({
         id: maximMetadata.sessionId,
         name: maximMetadata.sessionName ?? "default-session",
         tags: maximMetadata.sessionTags
-      })  
+      })
     }
-    
+
     // If the user passes in a traceId, we push to the existing trace or else we create a new trace
     const trace = session ? session.trace({
       id: maximMetadata?.traceId ?? uuid(),
@@ -53,24 +53,26 @@ class MaximAISDKWrapper implements LanguageModelV1 {
       name: maximMetadata?.spanName ?? "default-span",
       tags: maximMetadata?.spanTags
     })
-    
+
     // Getting the user input
-    const userMessage = promptMessages.find((msg) => msg.role === "user");
-    const userInput = userMessage?.content;
-    if (userInput) {
-      if (typeof userInput === "string") {
-        trace.input(userInput);
-      } else {
-        const userMessage = userInput[0];
-        switch (userMessage.type) {
-          case "text":
-            trace.input(userMessage.text)
-            break;
-          case "image_url":
-            trace.input(userMessage.image_url.url);
-            break;
-          default:
-            break;
+    if (!maximMetadata?.traceId) {
+      const userMessage = promptMessages.find((msg) => msg.role === "user");
+      const userInput = userMessage?.content;
+      if (userInput) {
+        if (typeof userInput === "string") {
+          trace.input(userInput);
+        } else {
+          const userMessage = userInput[0];
+          switch (userMessage.type) {
+            case "text":
+              trace.input(userMessage.text)
+              break;
+            case "image_url":
+              trace.input(userMessage.image_url.url);
+              break;
+            default:
+              break;
+          }
         }
       }
     }
@@ -78,7 +80,6 @@ class MaximAISDKWrapper implements LanguageModelV1 {
     try {
       // Calling the original doGenerate function
       const response = await this.model.doGenerate(options);
-      const output = response.text ? response.text : response.toolCalls ? JSON.stringify(response.toolCalls) : JSON.stringify(response)
       
       generation = span.generation({
         id: uuid(),
@@ -92,7 +93,6 @@ class MaximAISDKWrapper implements LanguageModelV1 {
       const res = convertDoGenerateResultToChatCompletionResult(response);
       generation.result(res);
       generation.end();
-      trace.output(output);
 
       return response;
     } catch (error) {
@@ -102,17 +102,14 @@ class MaximAISDKWrapper implements LanguageModelV1 {
         });
         generation.end();
       }
-      
+
       // Log error details
       console.error('[MaximSDK] doGenerate failed:', error);
-      
-      // Optionally add error to trace
-      trace?.output(`Error: ${(error as Error).message}`);
-      
-      throw(error)
+
+      throw (error)
     } finally {
       span.end();
-      trace.end();
+      if (!maximMetadata?.traceId) trace.end();
     }
   }
 
@@ -125,17 +122,16 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 
     let session: Session | undefined = undefined;
     let generation: Generation | undefined = undefined;
-    
+
     // If sessionId is passed, then create a session on Maxim. If not passed, do not create a session
-    if(maximMetadata?.sessionId) {
+    if (maximMetadata?.sessionId) {
       session = this.logger.session({
         id: maximMetadata.sessionId,
         name: maximMetadata.sessionName ?? "default-session",
         tags: maximMetadata.sessionTags
-      })  
+      })
     }
 
-    // If the user passes in a traceId, we push to the existing trace or else we create a new trace
     const trace = session ? session.trace({
       id: maximMetadata?.traceId ?? uuid(),
       name: maximMetadata?.traceName ?? "default-trace",
@@ -153,22 +149,24 @@ class MaximAISDKWrapper implements LanguageModelV1 {
       tags: maximMetadata?.spanTags
     })
 
-    const userMessage = promptMessages.find((msg) => msg.role === "user");
-    const userInput = userMessage?.content;
-    if (userInput) {
-      if (typeof userInput === "string") {
-        trace.input(userInput);
-      } else {
-        const userMessage = userInput[0];
-        switch (userMessage.type) {
-          case "text":
-            trace.input(userMessage.text)
-            break;
-          case "image_url":
-            trace.input(userMessage.image_url.url);
-            break;
-          default:
-            break;
+    if (!maximMetadata?.traceId) {
+      const userMessage = promptMessages.find((msg) => msg.role === "user");
+      const userInput = userMessage?.content;
+      if (userInput) {
+        if (typeof userInput === "string") {
+          trace.input(userInput);
+        } else {
+          const userMessage = userInput[0];
+          switch (userMessage.type) {
+            case "text":
+              trace.input(userMessage.text)
+              break;
+            case "image_url":
+              trace.input(userMessage.image_url.url);
+              break;
+            default:
+              break;
+          }
         }
       }
     }
@@ -186,21 +184,20 @@ class MaximAISDKWrapper implements LanguageModelV1 {
         modelParameters: extractModelParameters(options),
         messages: promptMessages
       });
-      
+
       // going through the original stream to collect chunks and pass them without modifications to the stream
       const chunks: LanguageModelV1StreamPart[] = [];
       const stream = new ReadableStream<LanguageModelV1StreamPart>({
         async start(controller) {
           try {
             const reader = response.stream.getReader();
-            
+
             while (true) {
               const { done, value } = await reader.read();
-              
+
               if (done) {
                 // Stream is done, now process before closing
                 try {
-                  // Process synchronously to avoid timing issues
                   processStream(chunks, span, trace, generation!, modelProvider);
                 } catch (error) {
                   console.error('[MaximSDK] Processing failed:', error);
@@ -211,12 +208,12 @@ class MaximAISDKWrapper implements LanguageModelV1 {
                     generation.end();
                   }
                 }
-                
+
                 // Now close the stream
                 controller.close();
                 break;
               }
-              
+
               // Collect chunk and pass it through
               chunks.push(value);
               controller.enqueue(value);
@@ -232,7 +229,6 @@ class MaximAISDKWrapper implements LanguageModelV1 {
           }
         }
       });
-  
 
       // Return response with the logging stream - user gets real-time data without additional delay
       return {
@@ -246,17 +242,14 @@ class MaximAISDKWrapper implements LanguageModelV1 {
         });
         generation.end();
       }
-      
+
       // Log error details
       console.error('[MaximSDK] doGenerate failed:', error);
-      
-      // Optionally add error to trace
-      trace?.output(`Error: ${(error as Error).message}`);
-      
+
       throw error;
     } finally {
       span.end();
-      trace.end();
+      if (!maximMetadata?.traceId) trace.end();
     }
   }
 

@@ -51,16 +51,27 @@ export function extractModelParameters(options: LanguageModelV1CallOptions) {
 }
 
 export type MaximVercelProviderMetadata = {
+  /** Link your traces to existing sessions */
   sessionId?: string;
+  /** Override session name */
   sessionName?: string;
+  /** Add tags to session */
   sessionTags?: Record<string, string>; 
+  /** Pass in an existing trace's id */
   traceId?: string;
+  /** Override trace name */
   traceName?: string;
+  /** Add tags to trace */
   traceTags?: Record<string, string>;
+  /** Pass in a custom generation name */
   generationName?: string;
+  /** Add tags to generation */
   generationTags?: Record<string, string>;
+  /** Pass in a specific span id */
   spanId?: string;
+  /** Override span name */
   spanName?: string;
+  /** Add tags to generation */
   spanTags?: Record<string, string>;
 }
 
