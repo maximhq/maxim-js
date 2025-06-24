@@ -8,15 +8,15 @@ import { v4 as uuid } from "uuid";
 import { convertDoGenerateResultToChatCompletionResult, determineProvider, extractMaximMetadataFromOptions, extractModelParameters, parsePromptMessages, processStream } from "./utils";
 import { Generation, Session } from "../components";
 
-export function wrapVercelAIModel<T extends LanguageModelV1>(model: T, logger: MaximLogger): T {
+export function wrapMaximAISDKModel<T extends LanguageModelV1>(model: T, logger: MaximLogger): T {
   if (model?.specificationVersion === "v1") {
-    return new MaximVercelWrapper(model, logger) as unknown as T;
+    return new MaximAISDKWrapper(model, logger) as unknown as T;
   }
   console.error("[MaximSDK] Unsupported model");
   return model;
 }
 
-class MaximVercelWrapper implements LanguageModelV1 {
+class MaximAISDKWrapper implements LanguageModelV1 {
   constructor(private model: LanguageModelV1, private logger: MaximLogger) { }
 
   async doGenerate(options: LanguageModelV1CallOptions) {
@@ -78,7 +78,8 @@ class MaximVercelWrapper implements LanguageModelV1 {
     try {
       // Calling the original doGenerate function
       const response = await this.model.doGenerate(options);
-
+      const output = response.text ? response.text : response.toolCalls ? JSON.stringify(response.toolCalls) : JSON.stringify(response)
+      
       generation = span.generation({
         id: uuid(),
         name: maximMetadata?.generationName ?? "default-generation",
@@ -87,11 +88,11 @@ class MaximVercelWrapper implements LanguageModelV1 {
         messages: promptMessages,
         modelParameters: extractModelParameters(options),
         tags: maximMetadata?.generationTags,
-      }
-      );
-      generation.result(convertDoGenerateResultToChatCompletionResult(response));
+      });
+      const res = convertDoGenerateResultToChatCompletionResult(response);
+      generation.result(res);
       generation.end();
-      trace.output(response.finishReason === "stop" && response.text ? response.text : response.finishReason === "tool-calls" && response.toolCalls ? JSON.stringify(response.toolCalls) : JSON.stringify(response));
+      trace.output(output);
 
       return response;
     } catch (error) {
@@ -175,11 +176,12 @@ class MaximVercelWrapper implements LanguageModelV1 {
     try {
       // Calling the original doStream method
       const response = await this.model.doStream(options);
+      const modelProvider = determineProvider(this.model.provider);
 
       generation = span.generation({
         id: uuid(),
         name: maximMetadata?.generationName ?? "default-generation",
-        provider: determineProvider(this.model.provider),
+        provider: modelProvider,
         model: this.modelId,
         modelParameters: extractModelParameters(options),
         messages: promptMessages
@@ -187,19 +189,50 @@ class MaximVercelWrapper implements LanguageModelV1 {
       
       // going through the original stream to collect chunks and pass them without modifications to the stream
       const chunks: LanguageModelV1StreamPart[] = [];
-      const stream = response.stream.pipeThrough(
-        new TransformStream({
-          transform(chunk, controller) {
-            chunks.push(chunk); // Collect for logging
-            controller.enqueue(chunk); // Pass through immediately
-          },
-          flush: () => {
-            // Process logging after stream ends
-            processStream(chunks, span, trace, generation!, this.provider)
-              .catch(error => console.error('[Maxim SDK] Background logging failed:', error));
+      const stream = new ReadableStream<LanguageModelV1StreamPart>({
+        async start(controller) {
+          try {
+            const reader = response.stream.getReader();
+            
+            while (true) {
+              const { done, value } = await reader.read();
+              
+              if (done) {
+                // Stream is done, now process before closing
+                try {
+                  // Process synchronously to avoid timing issues
+                  processStream(chunks, span, trace, generation!, modelProvider);
+                } catch (error) {
+                  console.error('[MaximSDK] Processing failed:', error);
+                  if (generation) {
+                    generation.error({
+                      message: (error as Error).message
+                    });
+                    generation.end();
+                  }
+                }
+                
+                // Now close the stream
+                controller.close();
+                break;
+              }
+              
+              // Collect chunk and pass it through
+              chunks.push(value);
+              controller.enqueue(value);
+            }
+          } catch (error) {
+            controller.error(error);
+            if (generation) {
+              generation.error({
+                message: (error as Error).message
+              });
+              generation.end();
+            }
           }
-        })
-      );
+        }
+      });
+  
 
       // Return response with the logging stream - user gets real-time data without additional delay
       return {

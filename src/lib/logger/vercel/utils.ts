@@ -148,7 +148,7 @@ export function convertDoGenerateResultToChatCompletionResult(result: any): Chat
     id: uuid(),
     object: "chat_completion",
     created: Math.floor(Date.now() / 1000),
-    model: result.response.model_id ?? "unknown",
+    model: result.response.model_id ?? result.response.modelId ?? "unknown",
     choices: result.rawResponse.body.choices ?? result.rawResponse.body.content ?? [],
     usage: {
       prompt_tokens: result.usage.promptTokens,
@@ -158,7 +158,7 @@ export function convertDoGenerateResultToChatCompletionResult(result: any): Chat
   }
 }
 
-export async function processStream(
+export function processStream(
   chunks: LanguageModelV1StreamPart[],
   span: Span,
   trace: Trace,
@@ -167,13 +167,18 @@ export async function processStream(
 ) {
   try {
     const result = processChunks(chunks);
-    
+
     generation.result({
         id: uuid(),
         object: "chat_completion",
         created: Math.floor(Date.now() / 1000),
         model: model,
-        choices: [],
+        choices: [{
+          index: 0,
+          text: result.text,
+          finish_reason: result.finishReason ?? "stop",
+          logprobs: null
+        }],
         usage: {
           prompt_tokens: result.usage?.promptTokens ?? 0,
           completion_tokens: result.usage?.completionTokens ?? 0,
@@ -183,9 +188,9 @@ export async function processStream(
     generation.end();
     
     trace.output(
-      result.finishReason === "stop" && result.text 
+      result.text 
           ? result.text 
-          : result.finishReason === "tool-calls" && result.toolCalls 
+          : result.toolCalls 
             ? JSON.stringify(result.toolCalls) 
             : JSON.stringify(result)
     );
