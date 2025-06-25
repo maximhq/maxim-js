@@ -8,6 +8,15 @@ import {
 } from "@ai-sdk/provider";
 import { CompletionRequestContent } from "../../models/prompt";
 
+/**
+ * Determines the provider type from a given model string.
+ *
+ * This function inspects the model identifier and returns a type-safe provider name (such as 'openai', 'bedrock', 'anthropic', etc.) based on known substrings in the model name.
+ * If no known provider is found, it defaults to 'openai'.
+ *
+ * @param {string} model - The model identifier string to inspect.
+ * @returns {"openai" | "bedrock" | "anthropic" | "huggingface" | "azure" | "together" | "groq" | "google"} The detected provider name.
+ */
 export function determineProvider(
   model: string,
 ): "openai" | "bedrock" | "anthropic" | "huggingface" | "azure" | "together" | "groq" | "google" {
@@ -35,6 +44,14 @@ export function determineProvider(
   return "openai";
 }
 
+/**
+ * Extracts supported model parameters from the given language model call options.
+ *
+ * This function pulls out relevant generation parameters (such as temperature, maxTokens, penalties, etc.) from the provided LanguageModelV1CallOptions object, returning them in a plain object for downstream use.
+ *
+ * @param {LanguageModelV1CallOptions} options - The call options containing model parameters.
+ * @returns {object} An object containing the extracted model parameters, including temperature, maxTokens, topP, topK, frequencyPenalty, stopSequences, seed, headers, presencePenalty, abortSignal, and responseFormat.
+ */
 export function extractModelParameters(options: LanguageModelV1CallOptions) {
   return {
     temperature: options.temperature,
@@ -51,6 +68,23 @@ export function extractModelParameters(options: LanguageModelV1CallOptions) {
   }
 }
 
+/**
+ * Metadata options for Maxim tracing integration with Vercel AI SDK providers.
+ *
+ * This type allows you to attach custom metadata to sessions, traces, generations, and spans when using Maxim's tracing/logging features. These fields enable advanced tracking, naming, and tagging of AI model calls for observability and debugging.
+ *
+ * @property {string} [sessionId] - Link your traces to an existing session by specifying its ID.
+ * @property {string} [sessionName] - Override the default session name for this trace.
+ * @property {Record<string, string>} [sessionTags] - Add custom tags to the session for filtering or grouping.
+ * @property {string} [traceId] - Pass in an existing trace's ID to associate this call with a specific trace.
+ * @property {string} [traceName] - Override the default trace name for this call.
+ * @property {Record<string, string>} [traceTags] - Add custom tags to the trace for filtering or grouping.
+ * @property {string} [generationName] - Provide a custom name for the generation (model output) event.
+ * @property {Record<string, string>} [generationTags] - Add custom tags to the generation for filtering or grouping.
+ * @property {string} [spanId] - Pass in a specific span ID to link this call to a particular span.
+ * @property {string} [spanName] - Override the default span name for this call.
+ * @property {Record<string, string>} [spanTags] - Add custom tags to the span for filtering or grouping.
+ */
 export type MaximVercelProviderMetadata = {
   /** Link your traces to existing sessions */
   sessionId?: string;
@@ -76,6 +110,14 @@ export type MaximVercelProviderMetadata = {
   spanTags?: Record<string, string>;
 }
 
+/**
+ * Extracts Maxim-specific provider metadata from the given language model call options.
+ *
+ * This function retrieves the `maxim` metadata object from the `providerMetadata` field of the options, for advanced tracing and logging in Maxim's observability system.
+ *
+ * @param {LanguageModelV1CallOptions} options - The call options containing provider metadata.
+ * @returns {MaximVercelProviderMetadata | undefined} The extracted Maxim metadata with a guaranteed `spanId`, or undefined if not present.
+ */
 export function extractMaximMetadataFromOptions(options: LanguageModelV1CallOptions) {
   const metadata = options.providerMetadata;
   if (!metadata || !metadata['maxim']) return undefined;
@@ -86,7 +128,15 @@ export function extractMaximMetadataFromOptions(options: LanguageModelV1CallOpti
   } as MaximVercelProviderMetadata;
 }
 
-
+/**
+ * Converts a LanguageModelV1Prompt into an array of CompletionRequest or ChatCompletionMessage objects.
+ *
+ * This function transforms the structured prompt format used by the Vercel AI SDK into the message format expected by downstream consumers, handling system, user, assistant, and tool roles.
+ *
+ * @param {LanguageModelV1Prompt} prompt - The prompt to be parsed, consisting of structured message parts.
+ * @returns {Array<CompletionRequest | ChatCompletionMessage>} An array of parsed messages suitable for completion requests or chat completions.
+ * @throws {Error} If an unsupported user message type is encountered.
+ */
 export function parsePromptMessages(prompt: LanguageModelV1Prompt): Array<CompletionRequest | ChatCompletionMessage> {
 
   const promptMessages: Array<CompletionRequest | ChatCompletionMessage> = prompt.map((promptMsg) => {
@@ -155,7 +205,19 @@ export function parsePromptMessages(prompt: LanguageModelV1Prompt): Array<Comple
   return promptMessages;
 }
 
-// type for the expected result structure
+/**
+ * Represents the expected structure of a result from a language model generation call.
+ *
+ * This interface defines the minimal fields required for converting a generation result into a standardized chat completion result, including token usage and model information.
+ *
+ * @property {object} usage - Token usage statistics for the generation.
+ * @property {number} usage.promptTokens - Number of tokens in the prompt.
+ * @property {number} usage.completionTokens - Number of tokens in the completion.
+ * @property {object} [response] - Optional response metadata, including model identifiers.
+ * @property {string} [response.model_id] - The model identifier (snake_case).
+ * @property {string} [response.modelId] - The model identifier (camelCase).
+ * @property {any} [rawResponse] - The raw response object from the model provider.
+ */
 interface DoGenerateResultLike {
   usage: {
     promptTokens: number;
@@ -168,6 +230,14 @@ interface DoGenerateResultLike {
   rawResponse?: any;
 }
 
+/**
+ * Converts a doGenerate result object into a ChatCompletionResult format.
+ *
+ * This function adapts the result of a language model generation (including token usage, model info, and choices) into the standardized ChatCompletionResult structure expected by downstream consumers.
+ *
+ * @param {DoGenerateResultLike & { [key: string]: any }} result - The result object from a generation call, including usage, response, and rawResponse fields.
+ * @returns {ChatCompletionResult} The formatted chat completion result, including id, model, choices, and token usage.
+ */
 export function convertDoGenerateResultToChatCompletionResult(result: DoGenerateResultLike & { [key: string]: any }): ChatCompletionResult {
   return {
     id: uuid(),
@@ -183,6 +253,18 @@ export function convertDoGenerateResultToChatCompletionResult(result: DoGenerate
   }
 }
 
+/**
+ * Processes a stream of language model output chunks and logs the result to Maxim tracing.
+ *
+ * This function aggregates streamed output parts, constructs a chat completion result, and finalizes the generation, span, and trace as appropriate. It also handles errors and ensures proper cleanup of tracing resources.
+ *
+ * @param {LanguageModelV1StreamPart[]} chunks - The array of streamed output parts from the language model.
+ * @param {Span} span - The Maxim tracing span associated with this generation.
+ * @param {Trace} trace - The Maxim tracing trace associated with this generation.
+ * @param {Generation} generation - The Maxim generation object to log the result to.
+ * @param {string} model - The model identifier used for this generation.
+ * @param {MaximVercelProviderMetadata | undefined} maximMetadata - Optional Maxim metadata for advanced tracing.
+ */
 export function processStream(
   chunks: LanguageModelV1StreamPart[],
   span: Span,
@@ -224,6 +306,15 @@ export function processStream(
   }
 }
 
+/**
+ * Processes an array of streamed language model output chunks into a structured result.
+ *
+ * This function aggregates text, tool calls, token usage, and finish reason from the provided stream parts, returning a single object summarizing the output of the language model stream.
+ *
+ * @param {LanguageModelV1StreamPart[]} chunks - The array of streamed output parts from the language model.
+ * @returns {{ text: string, toolCalls: LanguageModelV1FunctionToolCall[], usage?: { promptTokens: number, completionTokens: number }, finishReason?: string }}
+ *   An object containing the aggregated text, tool calls, token usage, and finish reason.
+ */
 function processChunks(chunks: LanguageModelV1StreamPart[]) {
   let text = "";
   const toolCalls: Record<string, LanguageModelV1FunctionToolCall> = {};

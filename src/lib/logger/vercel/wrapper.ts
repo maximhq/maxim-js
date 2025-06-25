@@ -8,6 +8,18 @@ import { v4 as uuid } from "uuid";
 import { convertDoGenerateResultToChatCompletionResult, determineProvider, extractMaximMetadataFromOptions, extractModelParameters, parsePromptMessages, processStream } from "./utils";
 import { Generation, Session } from "../components";
 
+/**
+ * Wraps a Vercel AI SDK language model with Maxim logging and tracing capabilities.
+ *
+ * This function checks if the provided model implements the v1 specification, and if so,
+ * returns a wrapped version that integrates Maxim's observability features. If the model
+ * is not supported, it logs an error and returns the original model.
+ *
+ * @template T - The type of the language model (must extend LanguageModelV1).
+ * @param {T} model - The Vercel AI SDK language model instance to wrap.
+ * @param {MaximLogger} logger - The MaximLogger instance to use for tracing and logging.
+ * @returns {T} The wrapped model with Maxim integration, or the original model if unsupported.
+ */
 export function wrapMaximAISDKModel<T extends LanguageModelV1>(model: T, logger: MaximLogger): T {
   if (model?.specificationVersion === "v1") {
     return new MaximAISDKWrapper(model, logger) as unknown as T;
@@ -16,9 +28,38 @@ export function wrapMaximAISDKModel<T extends LanguageModelV1>(model: T, logger:
   return model;
 }
 
+/**
+ * A wrapper class that adds Maxim logging and tracing to a Vercel AI SDK language model.
+ *
+ * This class decorates a LanguageModelV1 instance, intercepting calls to provide
+ * advanced observability, tracing, and logging via the MaximLogger. It is intended
+ * for internal use by the wrapMaximAISDKModel function.
+ *
+ * @class
+ * @template T - The type of the language model (must extend LanguageModelV1).
+ * @param {T} model - The Vercel AI SDK language model instance to wrap.
+ * @param {MaximLogger} logger - The MaximLogger instance to use for tracing and logging.
+ */
 class MaximAISDKWrapper implements LanguageModelV1 {
+  /**
+   * @constructor
+   * Creates a new MaximAISDKWrapper instance.
+   *
+   * @param {LanguageModelV1} model - The Vercel AI SDK language model instance to wrap.
+   * @param {MaximLogger} logger - The MaximLogger instance to use for tracing and logging.
+   */
   constructor(private model: LanguageModelV1, private logger: MaximLogger) { }
   
+  /**
+   * Sets up Maxim logging and tracing for a model call.
+   *
+   * Extracts Maxim metadata, parses prompt messages, and initializes session, trace, and span objects.
+   * Also logs user input to the trace if appropriate.
+   *
+   * @private
+   * @param {LanguageModelV1CallOptions} options - The call options for the model invocation.
+   * @returns {object} An object containing maximMetadata, trace, session, span, and promptMessages.
+   */
   private setupLogging(options: LanguageModelV1CallOptions) {
     // Extracting the maxim object from `providerOptions`
     const maximMetadata = extractMaximMetadataFromOptions(options);
@@ -79,6 +120,15 @@ class MaximAISDKWrapper implements LanguageModelV1 {
     return { maximMetadata, trace, session, span, promptMessages }
   }
 
+  /**
+   * Executes a text or object generation call with Maxim tracing and logging.
+   *
+   * This method is called internally by generateText and generateObject, and logs the generation
+   * result, errors, and relevant metadata to Maxim.
+   *
+   * @param {LanguageModelV1CallOptions} options - The call options for the model invocation.
+   * @returns {Promise<unknown>} The result of the underlying model's doGenerate call.
+   */
   async doGenerate(options: LanguageModelV1CallOptions) {
     const { maximMetadata, trace, span, promptMessages } = this.setupLogging(options);
     let generation: Generation | undefined = undefined;
@@ -119,6 +169,15 @@ class MaximAISDKWrapper implements LanguageModelV1 {
     }
   }
 
+  /**
+   * Executes a streaming generation call with Maxim tracing and logging.
+   *
+   * This method is called internally by streamText and streamObject, and logs the streaming
+   * result, errors, and relevant metadata to Maxim.
+   *
+   * @param {LanguageModelV1CallOptions} options - The call options for the model invocation.
+   * @returns {Promise<unknown>} The result of the underlying model's doStream call, with a wrapped stream.
+   */
   async doStream(options: LanguageModelV1CallOptions) {
     const { maximMetadata, trace, span, promptMessages } = this.setupLogging(options);
     let generation: Generation | undefined = undefined;
@@ -205,30 +264,65 @@ class MaximAISDKWrapper implements LanguageModelV1 {
     }
   }
 
+  /**
+   * Returns the default object generation mode of the wrapped model.
+   *
+   * @returns {string} The default object generation mode.
+   */
   get defaultObjectGenerationMode() {
     return this.model.defaultObjectGenerationMode;
   }
 
+  /**
+   * Returns the model ID of the wrapped model.
+   *
+   * @returns {string} The model ID.
+   */
   get modelId() {
     return this.model.modelId;
   }
 
+  /**
+   * Returns the provider name of the wrapped model.
+   *
+   * @returns {string} The provider name.
+   */
   get provider() {
     return this.model.provider;
   }
 
+  /**
+   * Returns the specification version of the wrapped model.
+   *
+   * @returns {string} The specification version.
+   */
   get specificationVersion() {
     return this.model.specificationVersion;
   }
 
+  /**
+   * Indicates whether the wrapped model supports image URLs.
+   *
+   * @returns {boolean} True if image URLs are supported, false otherwise.
+   */
   get supportsImageUrls() {
     return this.model.supportsImageUrls;
   }
 
+  /**
+   * Indicates whether the wrapped model supports structured outputs.
+   *
+   * @returns {boolean} True if structured outputs are supported, false otherwise.
+   */
   get supportsStructuredOutputs() {
     return this.model.supportsStructuredOutputs;
   }
 
+  /**
+   * Indicates whether the wrapped model supports URL input.
+   *
+   * @returns {boolean} True if URL input is supported, false otherwise.
+   */
   get supportsUrl() {
     return this.model.supportsUrl;
   }
