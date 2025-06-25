@@ -18,15 +18,14 @@ export function wrapMaximAISDKModel<T extends LanguageModelV1>(model: T, logger:
 
 class MaximAISDKWrapper implements LanguageModelV1 {
   constructor(private model: LanguageModelV1, private logger: MaximLogger) { }
-
-  async doGenerate(options: LanguageModelV1CallOptions) {
+  
+  private setupLogging(options: LanguageModelV1CallOptions) {
     // Extracting the maxim object from `providerOptions`
     const maximMetadata = extractMaximMetadataFromOptions(options);
 
     // Parsing the ai-sdk prompt messages to maxim prompt messages
     const promptMessages = parsePromptMessages(options.prompt);
     let session: Session | undefined = undefined;
-    let generation: Generation | undefined = undefined;
 
     // If sessionId is passed, then create a session on Maxim. If not passed, do not create a session
     if (maximMetadata?.sessionId) {
@@ -76,6 +75,13 @@ class MaximAISDKWrapper implements LanguageModelV1 {
         }
       }
     }
+    
+    return { maximMetadata, trace, session, span, promptMessages }
+  }
+
+  async doGenerate(options: LanguageModelV1CallOptions) {
+    const { maximMetadata, trace, span, promptMessages } = this.setupLogging(options);
+    let generation: Generation | undefined = undefined;
 
     try {
       // Calling the original doGenerate function
@@ -106,7 +112,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
       // Log error details
       console.error('[MaximSDK] doGenerate failed:', error);
 
-      throw (error)
+      throw error;
     } finally {
       span.end();
       if (!maximMetadata?.traceId) trace.end();
@@ -114,62 +120,8 @@ class MaximAISDKWrapper implements LanguageModelV1 {
   }
 
   async doStream(options: LanguageModelV1CallOptions) {
-    // Extracting the maxim object from `providerOptions`
-    const maximMetadata = extractMaximMetadataFromOptions(options);
-
-    // Parsing the ai-sdk prompt messages to maxim prompt messages
-    const promptMessages = parsePromptMessages(options.prompt);
-
-    let session: Session | undefined = undefined;
+    const { maximMetadata, trace, span, promptMessages } = this.setupLogging(options);
     let generation: Generation | undefined = undefined;
-
-    // If sessionId is passed, then create a session on Maxim. If not passed, do not create a session
-    if (maximMetadata?.sessionId) {
-      session = this.logger.session({
-        id: maximMetadata.sessionId,
-        name: maximMetadata.sessionName ?? "default-session",
-        tags: maximMetadata.sessionTags
-      })
-    }
-
-    const trace = session ? session.trace({
-      id: maximMetadata?.traceId ?? uuid(),
-      name: maximMetadata?.traceName ?? "default-trace",
-      tags: maximMetadata?.traceTags
-    }) : this.logger.trace({
-      id: maximMetadata?.traceId ?? uuid(),
-      name: maximMetadata?.traceName ?? "default-trace",
-      tags: maximMetadata?.traceTags
-    })
-
-    const spanId = maximMetadata?.spanId ?? uuid();
-    const span = trace.span({
-      id: spanId,
-      name: maximMetadata?.spanName ?? "default-span",
-      tags: maximMetadata?.spanTags
-    })
-
-    if (!maximMetadata?.traceId) {
-      const userMessage = promptMessages.find((msg) => msg.role === "user");
-      const userInput = userMessage?.content;
-      if (userInput) {
-        if (typeof userInput === "string") {
-          trace.input(userInput);
-        } else {
-          const userMessage = userInput[0];
-          switch (userMessage.type) {
-            case "text":
-              trace.input(userMessage.text)
-              break;
-            case "image_url":
-              trace.input(userMessage.image_url.url);
-              break;
-            default:
-              break;
-          }
-        }
-      }
-    }
 
     try {
       // Calling the original doStream method
@@ -198,7 +150,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
               if (done) {
                 // Stream is done, now process before closing
                 try {
-                  processStream(chunks, span, trace, generation!, modelProvider);
+                  if(generation) processStream(chunks, span, trace, generation, modelProvider, maximMetadata);
                 } catch (error) {
                   console.error('[MaximSDK] Processing failed:', error);
                   if (generation) {
@@ -244,7 +196,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
       }
 
       // Log error details
-      console.error('[MaximSDK] doGenerate failed:', error);
+      console.error('[MaximSDK] doStream failed:', error);
 
       throw error;
     } finally {

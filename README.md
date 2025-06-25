@@ -314,6 +314,7 @@ Use the built-in `wrapMaximAISDKModel` to wrap provider models and integrate Max
 
 ```ts
 const model = wrapMaximAISDKModel(anthropic('claude-3-5-sonnet-20241022'), logger);
+
 ```
 You can pass this wrapped model in your generation functions to enable logging integration with Maxim.
 
@@ -327,7 +328,9 @@ console.log("OpenAI response for generateText", response.text);
 ```
 
 #### Custom metadata
+
 You can customize the behavior of the operations in Maxim by passing in custom metadata. Use the `providerOptions` property to pass in an object with the key of `maxim` to use this behavior.
+
 ```ts
 streamText({
 	model: model,
@@ -345,6 +348,7 @@ streamText({
 ```
 
 ##### Available metadata fields
+
 **Entity Naming**:
 
 - `sessionName` - Override the default session name
@@ -366,6 +370,7 @@ streamText({
 - `spanId` - Use a specific span ID
 
 ##### Note
+
 You can get type-completion for the `maxim` metadata object using the `MaximVercelProviderMetadata` type from `@maximai/maxim-js`
 
 ```ts
@@ -385,6 +390,7 @@ streamText({
 ```
 
 #### Complete example
+
 ```ts
 const logger = await maxim.logger({ id: repoId });
 if (!logger) {

@@ -2,6 +2,7 @@ import { ChatCompletionMessage, ChatCompletionResult, CompletionRequest, Generat
 import { v4 as uuid } from "uuid";
 import {
   LanguageModelV1CallOptions,
+  LanguageModelV1FunctionToolCall,
   LanguageModelV1Prompt,
   LanguageModelV1StreamPart,
 } from "@ai-sdk/provider";
@@ -117,7 +118,7 @@ export function parsePromptMessages(prompt: LanguageModelV1Prompt): Array<Comple
                     },
                   };
                 default:
-                  return msg as any;
+                  throw new Error(`Unsupported user message type: ${msg.type}`);
               }
             }),
           }
@@ -154,13 +155,26 @@ export function parsePromptMessages(prompt: LanguageModelV1Prompt): Array<Comple
   return promptMessages;
 }
 
-export function convertDoGenerateResultToChatCompletionResult(result: any): ChatCompletionResult {
+// type for the expected result structure
+interface DoGenerateResultLike {
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+  };
+  response?: {
+    model_id?: string;
+    modelId?: string;
+  };
+  rawResponse?: any;
+}
+
+export function convertDoGenerateResultToChatCompletionResult(result: DoGenerateResultLike & { [key: string]: any }): ChatCompletionResult {
   return {
     id: uuid(),
     object: "chat_completion",
     created: Math.floor(Date.now() / 1000),
-    model: result.response.model_id ?? result.response.modelId ?? "unknown",
-    choices: result.rawResponse.body.choices ?? result.rawResponse.body.content ?? [],
+    model: result.response?.model_id ?? result.response?.modelId ?? "unknown",
+    choices: result.rawResponse?.body?.choices ?? result.rawResponse?.body?.content ?? [],
     usage: {
       prompt_tokens: result.usage.promptTokens,
       completion_tokens: result.usage.completionTokens,
@@ -174,7 +188,8 @@ export function processStream(
   span: Span,
   trace: Trace,
   generation: Generation,
-  model: string
+  model: string,
+  maximMetadata: MaximVercelProviderMetadata | undefined
 ) {
   try {
     const result = processChunks(chunks);
@@ -198,14 +213,6 @@ export function processStream(
     });
     generation.end();
     
-    trace.output(
-      result.text 
-          ? result.text 
-          : result.toolCalls 
-            ? JSON.stringify(result.toolCalls) 
-            : JSON.stringify(result)
-    );
-
   } catch (error) {
     generation.error({
       message: (error as Error).message
@@ -213,13 +220,13 @@ export function processStream(
     console.error('[Maxim SDK] Logging failed:', error);
   } finally {
     span.end();
-    trace.end();
+    if (!maximMetadata?.traceId) trace.end();
   }
 }
 
 function processChunks(chunks: LanguageModelV1StreamPart[]) {
   let text = "";
-  const toolCalls: Record<string, any> = {};
+  const toolCalls: Record<string, LanguageModelV1FunctionToolCall> = {};
   let usage: {
     promptTokens: number,
     completionTokens: number
