@@ -310,12 +310,19 @@ const toolResult = await tool.invoke(
 
 ### AI SDK
 
-Use the built-in `wrapMaximAISDKModel` to wrap provider models and integrate Maxim observability and logging with your agents using Vercel AI SDK.
+AI SDK integration is available as an optional dependency. Install the required package:
+
+```bash
+npm install @ai-sdk/provider
+```
+
+Use the built-in `wrapMaximAISDKModel` to wrap provider models and integrate Maxim observability and logging with your agents using AI SDK.
 
 ```ts
 const model = wrapMaximAISDKModel(anthropic('claude-3-5-sonnet-20241022'), logger);
 
 ```
+
 You can pass this wrapped model in your generation functions to enable logging integration with Maxim.
 
 ```ts
