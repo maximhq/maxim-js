@@ -773,7 +773,11 @@ export class Maxim {
 			}
 			await this.sync;
 			const key = this.getCacheKey(EntityType.PROMPT, promptId);
+			
+			// check if prompt is present in cache
 			let versionAndRules: PromptVersionsAndRules | null = await this.getPromptFromCache(key);
+			
+			// If not present in cache, we make an API call and set in cache
 			if (versionAndRules === null) {
 				versionAndRules = await this.APIService.prompt.getPrompt(promptId);
 				if (versionAndRules.versions.length === 0) {
@@ -781,6 +785,7 @@ export class Maxim {
 				}
 				await this.cache.set(promptId, JSON.stringify(versionAndRules));
 			}
+			// Neither present in cache nor received via API call
 			if (!versionAndRules) {
 				throw new Error(`No active deployments found for Prompt ${promptId}`);
 			}
