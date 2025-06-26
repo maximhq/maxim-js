@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-import { Maxim, MaximVercelProviderMetadata, wrapVercelAIModel } from "../../../../index";
+import { Maxim, MaximVercelProviderMetadata, wrapMaximAISDKModel } from "../../../../index";
 import { generateObject, generateText, streamObject, streamText, tool } from "ai"
 import { openai } from '@ai-sdk/openai';
 import { anthropic } from '@ai-sdk/anthropic';
@@ -41,7 +41,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-3.5-turbo'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-3.5-turbo'), logger);
 			const traceId = uuid();
 			
 			const query = "Who is Sachin Tendulkar?";
@@ -82,7 +82,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4o-mini'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4o-mini'), logger);
 
 			try {
 				const result = await generateText({
@@ -118,7 +118,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4-turbo'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4-turbo'), logger);
 
 			try {
 				const result = await generateText({
@@ -156,7 +156,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4-turbo'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4-turbo'), logger);
 
 			try {
 				const result = await generateText({
@@ -194,7 +194,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4-turbo'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4-turbo'), logger);
 
 			try {
 				const result = streamText({
@@ -224,7 +224,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4-turbo'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4-turbo'), logger);
 
 			try {
 				const result = streamText({
@@ -267,7 +267,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4o-mini'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4o-mini'), logger);
 
 			try {
 				const result = streamText({
@@ -306,7 +306,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4o-mini'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4o-mini'), logger);
 
 			try {
 				const result = await generateObject({
@@ -344,7 +344,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4o-mini'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4o-mini'), logger);
 			const traceId = uuid();
 			const spanId = uuid();
 
@@ -407,7 +407,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4o-mini'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4o-mini'), logger);
 
 			try {
 				const object = streamObject({
@@ -440,7 +440,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4o-mini'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4o-mini'), logger);
 
 			try {
 				const object = streamObject({
@@ -491,7 +491,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-3.5-turbo'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-3.5-turbo'), logger);
 			const traceId = uuid();
 
 			try {
@@ -543,7 +543,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-4o-mini'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-4o-mini'), logger);
 
 			try {
 				const result = await generateText({
@@ -598,7 +598,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(openai.chat('gpt-3.5-turbo'), logger);
+			const model = wrapMaximAISDKModel(openai.chat('gpt-3.5-turbo'), logger);
 
 			try {
 				const { text, sources } = await generateText({
@@ -629,7 +629,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if(!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(anthropic('claude-3-5-sonnet-20241022'), logger);
+			const model = wrapMaximAISDKModel(anthropic('claude-3-5-sonnet-20241022'), logger);
 			
 			const query = "Who is Sachin Tendulkar?";
 			try {
@@ -656,7 +656,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if(!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(anthropic('claude-3-5-sonnet-20241022'), logger);
+			const model = wrapMaximAISDKModel(anthropic('claude-3-5-sonnet-20241022'), logger);
 			
 			const query = "Who is Sachin Tendulkar?";
 			try {
@@ -683,7 +683,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if(!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapVercelAIModel(anthropic('claude-3-5-sonnet-20241022'), logger);
+			const model = wrapMaximAISDKModel(anthropic('claude-3-5-sonnet-20241022'), logger);
 
 			const query = "Who is Sachin Tendulkar?";
 			try {

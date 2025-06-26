@@ -16,9 +16,9 @@ import { Generation, Session } from "../components";
  * is not supported, it logs an error and returns the original model.
  *
  * @template T - The type of the language model (must extend LanguageModelV1).
- * @param {T} model - The Vercel AI SDK language model instance to wrap.
- * @param {MaximLogger} logger - The MaximLogger instance to use for tracing and logging.
- * @returns {T} The wrapped model with Maxim integration, or the original model if unsupported.
+ * @param model - The Vercel AI SDK language model instance to wrap.
+ * @param logger - The MaximLogger instance to use for tracing and logging.
+ * @returns The wrapped model with Maxim integration, or the original model if unsupported.
  */
 export function wrapMaximAISDKModel<T extends LanguageModelV1>(model: T, logger: MaximLogger): T {
   if (model?.specificationVersion === "v1") {
@@ -37,16 +37,16 @@ export function wrapMaximAISDKModel<T extends LanguageModelV1>(model: T, logger:
  *
  * @class
  * @template T - The type of the language model (must extend LanguageModelV1).
- * @param {T} model - The Vercel AI SDK language model instance to wrap.
- * @param {MaximLogger} logger - The MaximLogger instance to use for tracing and logging.
+ * @param model - The Vercel AI SDK language model instance to wrap.
+ * @param logger - The MaximLogger instance to use for tracing and logging.
  */
 class MaximAISDKWrapper implements LanguageModelV1 {
   /**
    * @constructor
    * Creates a new MaximAISDKWrapper instance.
    *
-   * @param {LanguageModelV1} model - The Vercel AI SDK language model instance to wrap.
-   * @param {MaximLogger} logger - The MaximLogger instance to use for tracing and logging.
+   * @param model - The Vercel AI SDK language model instance to wrap.
+   * @param logger - The MaximLogger instance to use for tracing and logging.
    */
   constructor(private model: LanguageModelV1, private logger: MaximLogger) { }
   
@@ -57,8 +57,8 @@ class MaximAISDKWrapper implements LanguageModelV1 {
    * Also logs user input to the trace if appropriate.
    *
    * @private
-   * @param {LanguageModelV1CallOptions} options - The call options for the model invocation.
-   * @returns {object} An object containing maximMetadata, trace, session, span, and promptMessages.
+   * @param options - The call options for the model invocation.
+   * @returns An object containing maximMetadata, trace, session, span, and promptMessages.
    */
   private setupLogging(options: LanguageModelV1CallOptions) {
     // Extracting the maxim object from `providerOptions`
@@ -126,8 +126,8 @@ class MaximAISDKWrapper implements LanguageModelV1 {
    * This method is called internally by generateText and generateObject, and logs the generation
    * result, errors, and relevant metadata to Maxim.
    *
-   * @param {LanguageModelV1CallOptions} options - The call options for the model invocation.
-   * @returns {Promise<unknown>} The result of the underlying model's doGenerate call.
+   * @param options - The call options for the model invocation.
+   * @returns The result of the underlying model's doGenerate call.
    */
   async doGenerate(options: LanguageModelV1CallOptions) {
     const { maximMetadata, trace, span, promptMessages } = this.setupLogging(options);
@@ -175,8 +175,8 @@ class MaximAISDKWrapper implements LanguageModelV1 {
    * This method is called internally by streamText and streamObject, and logs the streaming
    * result, errors, and relevant metadata to Maxim.
    *
-   * @param {LanguageModelV1CallOptions} options - The call options for the model invocation.
-   * @returns {Promise<unknown>} The result of the underlying model's doStream call, with a wrapped stream.
+   * @param options - The call options for the model invocation.
+   * @returns The result of the underlying model's doStream call, with a wrapped stream.
    */
   async doStream(options: LanguageModelV1CallOptions) {
     const { maximMetadata, trace, span, promptMessages } = this.setupLogging(options);
@@ -267,7 +267,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
   /**
    * Returns the default object generation mode of the wrapped model.
    *
-   * @returns {string} The default object generation mode.
+   * @returns The default object generation mode.
    */
   get defaultObjectGenerationMode() {
     return this.model.defaultObjectGenerationMode;
@@ -276,7 +276,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
   /**
    * Returns the model ID of the wrapped model.
    *
-   * @returns {string} The model ID.
+   * @returns The model ID.
    */
   get modelId() {
     return this.model.modelId;
@@ -285,7 +285,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
   /**
    * Returns the provider name of the wrapped model.
    *
-   * @returns {string} The provider name.
+   * @returns The provider name.
    */
   get provider() {
     return this.model.provider;
@@ -294,7 +294,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
   /**
    * Returns the specification version of the wrapped model.
    *
-   * @returns {string} The specification version.
+   * @returns The specification version.
    */
   get specificationVersion() {
     return this.model.specificationVersion;
@@ -303,7 +303,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
   /**
    * Indicates whether the wrapped model supports image URLs.
    *
-   * @returns {boolean} True if image URLs are supported, false otherwise.
+   * @returns True if image URLs are supported, false otherwise.
    */
   get supportsImageUrls() {
     return this.model.supportsImageUrls;
@@ -312,7 +312,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
   /**
    * Indicates whether the wrapped model supports structured outputs.
    *
-   * @returns {boolean} True if structured outputs are supported, false otherwise.
+   * @returns True if structured outputs are supported, false otherwise.
    */
   get supportsStructuredOutputs() {
     return this.model.supportsStructuredOutputs;
@@ -321,7 +321,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
   /**
    * Indicates whether the wrapped model supports URL input.
    *
-   * @returns {boolean} True if URL input is supported, false otherwise.
+   * @returns True if URL input is supported, false otherwise.
    */
   get supportsUrl() {
     return this.model.supportsUrl;

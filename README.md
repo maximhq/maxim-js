@@ -316,7 +316,7 @@ AI SDK integration is available as an optional dependency. Install the required 
 npm install @ai-sdk/provider
 ```
 
-Use the built-in `wrapMaximAISDKModel` to wrap provider models and integrate Maxim observability and logging with your agents using AI SDK.
+Use the built-in `wrapMaximAISDKModel` function to wrap provider models and integrate Maxim observability and logging with your agents using AI SDK.
 
 ```ts
 const model = wrapMaximAISDKModel(anthropic('claude-3-5-sonnet-20241022'), logger);
@@ -360,14 +360,14 @@ streamText({
 
 - `sessionName` - Override the default session name
 - `traceName` - Override the default trace name
-- `chainName` - Override the default chain/span name
+- `spanName` - Override the default span name
 - `generationName` - Override the default LLM generation name
 
 **Entity Tagging**:
 
 - `sessionTags` - Add custom tags to the session (object: `{key: value}`)
 - `traceTags` - Add custom tags to the trace (object: `{key: value}`)
-- `chainTags` - Add custom tags to chains/spans (object: `{key: value}`)
+- `spanTags` - Add custom tags to span (object: `{key: value}`)
 - `generationTags` - Add custom tags to LLM generations (object: `{key: value}`)
 
 **ID References** (for linking to existing traces/sessions):
@@ -399,6 +399,10 @@ streamText({
 #### Complete example
 
 ```ts
+import { v4 as uuid } from 'uuid';
+import { z } from 'zod';
+// other imports
+
 const logger = await maxim.logger({ id: repoId });
 if (!logger) {
 	throw new Error("Logger is not available");
