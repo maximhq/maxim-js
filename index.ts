@@ -3,6 +3,8 @@ export * from "./src/lib/dataset/dataset";
 export * from "./src/lib/evaluators/evaluators";
 export * from "./src/lib/logger/components";
 export { MaximLangchainTracer } from "./src/lib/logger/langchain/tracer";
+export { wrapMaximAISDKModel } from "./src/lib/logger/vercel/wrapper";
+export type { MaximVercelProviderMetadata } from './src/lib/logger/vercel/utils';
 export * from "./src/lib/logger/logger";
 export * from "./src/lib/maxim";
 export * from "./src/lib/models/cache";
