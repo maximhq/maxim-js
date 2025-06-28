@@ -19,7 +19,7 @@
 		"allowSyntheticDefaultImports": true,
 		"resolveJsonModule": true
 	},
-	"include": ["src/**/*.ts", "index.ts", "langchain.ts"],
+	"include": ["src/**/*.ts", "*.ts"],
 	"references": [
 		{
 			"path": "./tsconfig.lib.json"
