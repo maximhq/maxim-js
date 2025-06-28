@@ -7,15 +7,140 @@ import type {
 	PassFailCriteriaType,
 } from "./evaluator";
 
+/**
+ * Logger interface for capturing test run execution events and progress.
+ *
+ * Provides methods for logging informational messages, errors, and processing
+ * events during test run execution. Users can implement custom loggers to
+ * integrate with their logging infrastructure or customize output formatting.
+ *
+ * @template T - The data structure type for the test run
+ * @interface TestRunLogger
+ * @example
+ * import { TestRunLogger } from '@maximai/maxim-js';
+ *
+ * const customLogger: TestRunLogger = {
+ *   info: (message) => console.log(`[INFO] ${message}`),
+ *   error: (message) => console.error(`[ERROR] ${message}`),
+ *   processed: (message) => console.log(`[PROCESSED] ${message}`),
+ * };
+ *
+ * @example
+ * // Using custom logger with test run
+ * maxim.createTestRun("my-test", "workspace-id")
+ *   .withLogger(customLogger)
+ *   .withData(testData)
+ *   .run();
+ */
 export interface TestRunLogger<T extends DataStructure | undefined = undefined> {
+	/**
+	 * Logs informational messages during test run execution.
+	 *
+	 * @param message - The informational message to log
+	 * @returns void
+	 * @example
+	 * // Called automatically during test run
+	 * logger.info("Starting test run with 100 entries");
+	 * logger.info("Test run completed successfully");
+	 */
 	info: (message: string) => void;
+
+	/**
+	 * Logs error messages when issues occur during test run execution.
+	 *
+	 * @param message - The error message to log
+	 * @returns void
+	 * @example
+	 * // Called automatically when errors occur
+	 * logger.error("Failed to evaluate entry 42: timeout");
+	 * logger.error("API rate limit exceeded, retrying...");
+	 */
 	error: (message: string) => void;
+
+	/**
+	 * Logs processing completion for individual test run entries.
+	 *
+	 * Called after each dataset entry has been processed, including output
+	 * generation and evaluation. Provides detailed information about the
+	 * processing results for monitoring and debugging.
+	 *
+	 * @param message - The processing completion message
+	 * @param data - Detailed processing data
+	 * @param data.datasetEntry - The dataset entry that was processed
+	 * @param data.output - The generated output (if successful)
+	 * @param data.evaluationResults - Evaluation results (if any)
+	 * @returns void
+	 * @example
+	 * // Called automatically after each entry
+	 * logger.processed("Entry 1 processed successfully", {
+	 *   datasetEntry: { input: "Hello", expectedOutput: "Hi there!" },
+	 *   output: { data: "Hi there!" },
+	 *   evaluationResults: [
+	 *     { name: "accuracy", result: { score: 0.95, reasoning: "Excellent match" } }
+	 *   ]
+	 * });
+	 */
 	processed: (
 		message: string,
 		data: { datasetEntry: Data<T>; output?: YieldedOutput; evaluationResults?: LocalEvaluationResult[] },
 	) => void;
 }
 
+/**
+ * Output data structure returned by test run output functions.
+ *
+ * Contains the generated output data along with optional metadata about
+ * the generation process including token usage, costs, and retrieved context.
+ * This is the expected return type for functions passed to `yieldsOutput()`.
+ *
+ * @property data - The main generated output text
+ * @property retrievedContextToEvaluate - Context retrieved during generation for evaluation
+ * @property meta - Optional metadata about the generation process
+ * @property meta.usage - Token usage information for the generation
+ * @property meta.cost - Cost information for the generation
+ * @example
+ * // Simple output
+ * const output: YieldedOutput = {
+ *   data: "The weather in San Francisco is sunny and 72°F"
+ * };
+ *
+ * @example
+ * // Output with full metadata
+ * const output: YieldedOutput = {
+ *   data: "Based on the provided documents, the answer is...",
+ *   retrievedContextToEvaluate: [
+ *     "Document 1: Weather data shows...",
+ *     "Document 2: Historical trends indicate..."
+ *   ],
+ *   meta: {
+ *     usage: {
+ *       promptTokens: 150,
+ *       completionTokens: 45,
+ *       totalTokens: 195,
+ *       latency: 1200
+ *     },
+ *     cost: {
+ *       input: 0.0015,
+ *       output: 0.0045,
+ *       total: 0.006
+ *     }
+ *   }
+ * };
+ *
+ * @example
+ * // Using in yieldsOutput function
+ * maxim.createTestRun("accuracy-test", "workspace-id")
+ *   .yieldsOutput(async (data) => {
+ *     const response = await callLLM(data.input);
+ *     return {
+ *       data: response.text,
+ *       meta: {
+ *         usage: response.usage,
+ *         cost: response.cost
+ *       }
+ *     };
+ *   });
+ */
 export type YieldedOutput = {
 	data: string;
 	retrievedContextToEvaluate?: string | string[];
@@ -38,6 +163,66 @@ export type YieldedOutput = {
 	};
 };
 
+/**
+ * Complete results and metrics from a test run execution.
+ *
+ * Contains comprehensive information about test run performance including
+ * individual evaluator scores, aggregated metrics, token usage, costs,
+ * and latency statistics. Provides both detailed results and a link to
+ * view the full report in the Maxim web interface.
+ *
+ * @property link - URL to view the detailed test run report in Maxim
+ * @property result - Array of test run result objects (typically one)
+ * @example
+ * // Example test run result
+ * const testResult: TestRunResult = {
+ *   link: "https://app.getmaxim.ai/workspace/123/test-runs/456",
+ *   result: [{
+ *     name: "Accuracy Test Run",
+ *     individualEvaluatorMeanScore: {
+ *       "bias": { score: 0.87, pass: true, outOf: 1.0 },
+ *       "toxicity": { score: 0.92, pass: true, outOf: 1.0 },
+ *       "custom-programmatic-evaluator": { score: 1.0, pass: true }
+ *     },
+ *     usage: {
+ *       total: 15420,
+ *       input: 12300,
+ *       completion: 3120
+ *     },
+ *     cost: {
+ *       total: 0.0234,
+ *       input: 0.0123,
+ *       completion: 0.0111
+ *     },
+ *     latency: {
+ *       min: 890,
+ *       max: 2340,
+ *       p50: 1200,
+ *       p90: 1800,
+ *       p95: 2100,
+ *       p99: 2300,
+ *       mean: 1350,
+ *       standardDeviation: 320,
+ *       total: 135000
+ *     }
+ *   }]
+ * };
+ *
+ * @example
+ * // Using test run results
+ * const { testRunResult } = await maxim.createTestRun("my-test", "workspace")
+ *   .withData(dataset)
+ *   .withEvaluators("accuracy", "relevance")
+ *   .yieldsOutput(generateOutput)
+ *   .run();
+ *
+ * console.log(`View report: ${testRunResult.link}`);
+ *
+ * const scores = testRunResult.result[0].individualEvaluatorMeanScore;
+ * for (const [evaluator, result] of Object.entries(scores)) {
+ *   console.log(`${evaluator}: ${result.score} (${result.pass ? 'PASS' : 'FAIL'})`);
+ * }
+ */
 export type TestRunResult = {
 	link: string;
 	result: {
@@ -372,7 +557,7 @@ export type TestRunBuilder<T extends DataStructure | undefined = undefined> = {
 	/**
 	 * Runs the test run with the configured configuration.
 	 * @async
-	 * @param {number} timeoutInMinutes - The timeout in minutes for the test run. Will be rounded to the nearest whole number if given a floating value (optional, defaults to 15 minutes)
+	 * @param timeoutInMinutes - The timeout in minutes for the test run. Will be rounded to the nearest whole number if given a floating value (optional, defaults to 15 minutes)
 	 * @returns The test run result.
 	 * @throws {Error} for any of the following reasons:
 	 * - If the test run is not configured properly (sanitization error)

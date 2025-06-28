@@ -1,7 +1,36 @@
 import type { CSVFile } from "../utils/csvParser";
 
+/**
+ * Enumeration of supported variable types for dataset entries.
+ *
+ * Defines the data types that can be stored in dataset variables, affecting
+ * how the data is processed and validated during test runs and evaluations.
+ *
+ * @enum {string}
+ * @example
+ * import { VariableType } from '@maximai/maxim-js';
+ *
+ * const textVariable = {
+ *   type: VariableType.TEXT,
+ *   payload: "Hello world"
+ * };
+ *
+ * const jsonVariable = {
+ *   type: VariableType.JSON,
+ *   payload: JSON.stringify({ key: "value", number: 42 })
+ * };
+ */
 export enum VariableType {
+	/**
+	 * Plain text data type for simple string values.
+	 * @example "Hello world", "user input text", "response content"
+	 */
 	TEXT = "text",
+
+	/**
+	 * JSON data type for structured data stored as serialized JSON.
+	 * @example '{"name": "John", "age": 30}', '[1, 2, 3]', '{"metadata": {...}}'
+	 */
 	JSON = "json",
 }
 
@@ -72,6 +101,33 @@ export type MapDataStructureToValue<T> = T extends InputColumn
 					? string | string[] | undefined | null
 					: never;
 
+/**
+ * Type representing a data entry that conforms to a specific data structure.
+ *
+ * Provides type-safe access to dataset columns based on the defined data structure.
+ * The type automatically handles required vs optional fields based on column types,
+ * with nullable variable columns being optional and others being required.
+ *
+ * @template T - The data structure type defining column names and types
+ * @example
+ * import { Data, createDataStructure } from '@maximai/maxim-js';
+ *
+ * // Define a data structure
+ * const structure = createDataStructure({
+ *   userInput: "INPUT",
+ *   expectedResponse: "EXPECTED_OUTPUT",
+ *   context: "CONTEXT_TO_EVALUATE",
+ *   metadata: "NULLABLE_VARIABLE"
+ * });
+ *
+ * // Data type is automatically inferred
+ * const dataEntry: Data<typeof structure> = {
+ *   userInput: "What is the weather?",         // Required
+ *   expectedResponse: "Sunny, 72°F",           // Required
+ *   context: ["weather data", "location"],     // Required
+ *   metadata: undefined                        // Optional (nullable)
+ * };
+ */
 export type Data<T extends DataStructure | undefined> = T extends DataStructure
 	? {
 			[K in keyof T as undefined | null extends MapDataStructureToValue<T[K]> ? never : K]: MapDataStructureToValue<T[K]>;

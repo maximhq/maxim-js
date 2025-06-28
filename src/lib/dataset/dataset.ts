@@ -1,5 +1,26 @@
 import type { DataStructure } from "../models/dataset";
 
+/**
+ * Creates and validates a data structure definition for test run.
+ *
+ * Data structures define the schema and column types for datasets used in test runs
+ * and evaluations within. This function ensures the structure is valid and returns
+ * it for use within test runs.
+ *
+ * @template T - The data structure type, extending the type DataStructure or undefined
+ * @param dataStructure - The data structure definition to create and validate
+ * @returns The validated data structure, unchanged if valid
+ * @throws {Error} When the data structure contains multiple INPUT, EXPECTED_OUTPUT, or CONTEXT_TO_EVALUATE columns
+ * @example
+ * import { createDataStructure } from '@maximai/maxim-js';
+ *
+ * const dataStructure = createDataStructure({
+ *   userInput: "INPUT",
+ *   expectedResponse: "EXPECTED_OUTPUT",
+ *   context: "CONTEXT_TO_EVALUATE",
+ *   metadata: "VARIABLE"
+ * });
+ */
 export const createDataStructure = <T extends DataStructure | undefined = undefined>(dataStructure: T) => {
 	sanitizeDataStructure(dataStructure);
 	return dataStructure;

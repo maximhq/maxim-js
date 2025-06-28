@@ -8,6 +8,9 @@ import { Span, SpanConfig } from "./span";
 import { ToolCall, ToolCallConfig } from "./toolCall";
 import { Entity } from "./types";
 
+/**
+ * Configuration object for trace.
+ */
 export type TraceConfig = {
 	id: string;
 	name?: string;
@@ -15,7 +18,63 @@ export type TraceConfig = {
 	tags?: Record<string, string>;
 };
 
+/**
+ * Represents a trace (a single turn interaction).
+ *
+ * Traces capture the complete execution flow of operations, including generations,
+ * tool calls, retrievals, spans, and errors happening within one user interaction
+ * turn. They provide detailed timing and hierarchical organization of activities
+ * within a session or standalone operation.
+ *
+ * @class Trace
+ * @extends EventEmittingBaseContainer
+ * @example
+ * const trace = logger.trace({
+ *   id: 'query-processing-trace',
+ *   name: 'User Query Processing',
+ *   sessionId: 'chat-session-001', // optional
+ * });
+ *
+ * // Add input
+ * trace.input('Find information about machine learning');
+ *
+ * // Adding components to trace
+ * const generation = trace.generation({
+ *   id: 'llm-generation-001',
+ *   provider: 'openai',
+ *   model: 'gpt-4',
+ *   messages: [{ role: 'user', content: 'Explain ML' }],
+ *   modelParameters: { temperature: 0.7 }
+ * });
+ *
+ * const retrieval = trace.retrieval({
+ *   id: 'vector-search-001',
+ *   name: 'Knowledge Base Search'
+ * });
+ *
+ * const toolCall = trace.toolCall({
+ *   id: 'search-tool-001',
+ *   name: 'external_search',
+ *   description: 'Search external knowledge base',
+ *   args: JSON.stringify({ query: 'machine learning' })
+ * });
+ *
+ * // Add output
+ * trace.output('Machine learning is a subset of artificial intelligence...');
+ */
 export class Trace extends EventEmittingBaseContainer {
+	/**
+	 * Creates a new trace log entry.
+	 *
+	 * @param config - Configuration object defining the trace
+	 * @param writer - Log writer instance for persisting trace data
+	 * @example
+	 * const trace = new Trace({
+	 *   id: 'recommendation-trace',
+	 *   name: 'Product Recommendation Flow',
+	 *   sessionId: 'shopping-session-456',
+	 * });
+	 */
 	constructor(config: TraceConfig, writer: LogWriter) {
 		super(Entity.TRACE, config, writer);
 		this.commit("create", {
@@ -24,6 +83,23 @@ export class Trace extends EventEmittingBaseContainer {
 		});
 	}
 
+	/**
+	 * Creates a new generation (LLM call) within this trace.
+	 *
+	 * @param config - Configuration for the generation
+	 * @returns A new generation instance associated with this trace
+	 * @example
+	 * const generation = trace.generation({
+	 *   id: 'summary-generation',
+	 *   provider: 'openai',
+	 *   model: 'gpt-4',
+	 *   messages: [
+	 *     { role: 'system', content: 'Summarize the following text.' },
+	 *     { role: 'user', content: 'Long article content...' }
+	 *   ],
+	 *   modelParameters: { temperature: 0.3, max_tokens: 150 }
+	 * });
+	 */
 	public generation(config: GenerationConfig): Generation {
 		const generation = new Generation(config, this.writer);
 		this.commit("add-generation", {
@@ -34,6 +110,14 @@ export class Trace extends EventEmittingBaseContainer {
 		return generation;
 	}
 
+	/**
+	 * Static method to create a generation associated with any trace by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param config - Configuration for the generation
+	 * @returns A new generation instance
+	 */
 	public static generation_(writer: LogWriter, id: string, config: GenerationConfig) {
 		const generation = new Generation(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-generation", {
@@ -44,30 +128,101 @@ export class Trace extends EventEmittingBaseContainer {
 		return generation;
 	}
 
+	/**
+	 * Associates this trace with a session.
+	 *
+	 * @param sessionId - The ID of the session to associate with
+	 * @returns void
+	 * @example
+	 * trace.addToSession('user-session-789');
+	 */
 	public addToSession(sessionId: string) {
 		this.commit("update", { sessionId });
 	}
 
+	/**
+	 * Static method to associate any trace with a session by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param sessionId - The session ID to associate with
+	 * @returns void
+	 */
 	public static addToSession_(writer: LogWriter, id: string, sessionId: string) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "update", { sessionId });
 	}
 
+	/**
+	 * Adds feedback to this trace from users.
+	 *
+	 * @param feedback - Feedback object containing score and optional comment
+	 * @param feedback.score - Numerical score for the trace
+	 * @param feedback.comment - Optional textual feedback
+	 * @returns void
+	 * @example
+	 * trace.feedback({
+	 *   score: 4,
+	 *   comment: 'Good results but could be faster'
+	 * });
+	 */
 	public feedback(feedback: { score: number; comment?: string }) {
 		this.commit("add-feedback", feedback);
 	}
 
+	/**
+	 * Static method to add feedback to any trace by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param feedback - Feedback object
+	 * @param feedback.score - Numerical score for the trace
+	 * @param feedback.comment - Optional textual feedback
+	 * @returns void
+	 */
 	public static feedback_(writer: LogWriter, id: string, feedback: { score: number; comment?: string }) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-feedback", feedback);
 	}
 
+	/**
+	 * Adds an attachment to this trace.
+	 *
+	 * @param attachment - The attachment to add (can be of type file, data, or URL)
+	 * @returns void
+	 * @example
+	 * trace.addAttachment({
+	 *   id: 'input-document',
+	 *   type: 'file',
+	 *   path: './uploads/document.pdf',
+	 *   tags: { category: 'input' }
+	 * });
+	 */
 	public addAttachment(attachment: Attachment) {
 		this.commit("upload-attachment", attachment);
 	}
 
+	/**
+	 * Static method to add an attachment to any trace by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param attachment - The attachment to add
+	 * @returns void
+	 */
 	public static addAttachment_(writer: LogWriter, id: string, attachment: Attachment) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "upload-attachment", attachment);
 	}
 
+	/**
+	 * Creates a new span within this trace for hierarchical organization.
+	 *
+	 * @param config - Configuration for the span
+	 * @returns A new span instance associated with this trace
+	 * @example
+	 * const span = trace.span({
+	 *   id: 'data-processing-span',
+	 *   name: 'Data Processing Pipeline',
+	 * });
+	 */
 	public span(config: SpanConfig): Span {
 		const span = new Span(config, this.writer);
 		this.commit("add-span", {
@@ -77,6 +232,14 @@ export class Trace extends EventEmittingBaseContainer {
 		return span;
 	}
 
+	/**
+	 * Static method to create a span associated with any trace by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param config - Configuration for the span
+	 * @returns A new span instance
+	 */
 	public static span_(writer: LogWriter, id: string, config: SpanConfig) {
 		const span = new Span(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-span", {
@@ -86,6 +249,19 @@ export class Trace extends EventEmittingBaseContainer {
 		return span;
 	}
 
+	/**
+	 * Creates an error within this trace.
+	 *
+	 * @param config - Configuration for the error
+	 * @returns A new error instance associated with this trace
+	 * @example
+	 * const error = trace.error({
+	 *   id: 'processing-error',
+	 *   message: 'Failed to process user input',
+	 *   code: 'PROCESSING_FAILED',
+	 *   type: 'ProcessingError'
+	 * });
+	 */
 	public error(config: ErrorConfig): Error {
 		const error = new Error(config, this.writer);
 		this.commit("add-error", {
@@ -95,6 +271,14 @@ export class Trace extends EventEmittingBaseContainer {
 		return error;
 	}
 
+	/**
+	 * Static method to create an error associated with any trace by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param config - Configuration for the error
+	 * @returns A new error instance
+	 */
 	public static error_(writer: LogWriter, id: string, config: ErrorConfig) {
 		const error = new Error(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-error", {
@@ -104,6 +288,19 @@ export class Trace extends EventEmittingBaseContainer {
 		return error;
 	}
 
+	/**
+	 * Creates a tool call within this trace.
+	 *
+	 * @param config - Configuration for the tool call
+	 * @returns A new tool call instance associated with this trace
+	 * @example
+	 * const toolCall = trace.toolCall({
+	 *   id: 'calculator-tool',
+	 *   name: 'calculate',
+	 *   description: 'Perform mathematical calculations',
+	 *   args: JSON.stringify({ expression: '2 + 2' })
+	 * });
+	 */
 	public toolCall(config: ToolCallConfig) {
 		const toolCall = new ToolCall(config, this.writer);
 		this.commit("add-tool-call", {
@@ -113,6 +310,14 @@ export class Trace extends EventEmittingBaseContainer {
 		return toolCall;
 	}
 
+	/**
+	 * Static method to create a tool call associated with any trace by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param config - Configuration for the tool call
+	 * @returns A new tool call instance
+	 */
 	public static toolCall_(writer: LogWriter, id: string, config: ToolCallConfig) {
 		const toolCall = new ToolCall(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-tool-call", {
@@ -122,6 +327,17 @@ export class Trace extends EventEmittingBaseContainer {
 		return toolCall;
 	}
 
+	/**
+	 * Creates a retrieval within this trace.
+	 *
+	 * @param config - Configuration for the retrieval
+	 * @returns A new retrieval instance associated with this trace
+	 * @example
+	 * const retrieval = trace.retrieval({
+	 *   id: 'knowledge-search',
+	 *   name: 'Knowledge Base Search'
+	 * });
+	 */
 	public retrieval(config: RetrievalConfig): Retrieval {
 		const retrieval = new Retrieval(config, this.writer);
 		this.commit("add-retrieval", {
@@ -131,16 +347,14 @@ export class Trace extends EventEmittingBaseContainer {
 		return retrieval;
 	}
 
-	public input(input: string): Trace {
-		this.commit("update", { input });
-		return this;
-	}
-
-	public output(output: string): Trace {
-		this.commit("update", { output });
-		return this;
-	}
-
+	/**
+	 * Static method to create a retrieval associated with any trace by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param config - Configuration for the retrieval
+	 * @returns A new retrieval instance
+	 */
 	public static retrieval_(writer: LogWriter, id: string, config: RetrievalConfig) {
 		const retrieval = new Retrieval(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-retrieval", {
@@ -150,23 +364,57 @@ export class Trace extends EventEmittingBaseContainer {
 		return retrieval;
 	}
 
+	/**
+	 * Sets the input for this trace.
+	 *
+	 * @param input - The input that for this trace
+	 * @returns This trace instance for method chaining
+	 * @example
+	 * trace.input('Analyze this customer feedback: "The product is great but shipping was slow"');
+	 */
+	public input(input: string): Trace {
+		this.commit("update", { input });
+		return this;
+	}
+
+	/**
+	 * Static method to set input for any trace by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param input - The input for the trace
+	 * @returns void
+	 */
 	public static input_(writer: LogWriter, id: string, input: string) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "update", {
 			input: input,
 		});
 	}
 
+	/**
+	 * Sets the output for this trace.
+	 *
+	 * @param output - The final output or result of this trace execution
+	 * @returns This trace instance for method chaining
+	 * @example
+	 * trace.output('Sentiment: Positive (0.7), Issues: Shipping delay, Action: Contact logistics team');
+	 */
+	public output(output: string): Trace {
+		this.commit("update", { output });
+		return this;
+	}
+
+	/**
+	 * Static method to set output for any trace by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param output - The output for the trace
+	 * @returns void
+	 */
 	public static output_(writer: LogWriter, id: string, output: string) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "update", {
 			output: output,
 		});
-	}
-
-	public static override end_(writer: LogWriter, id: string, data?: any) {
-		EventEmittingBaseContainer.end_(writer, Entity.TRACE, id, data);
-	}
-
-	public static override addTag_(writer: LogWriter, id: string, key: string, value: string) {
-		EventEmittingBaseContainer.addTag_(writer, Entity.TRACE, id, key, value);
 	}
 }
