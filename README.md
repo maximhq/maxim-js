@@ -469,6 +469,21 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.6.0
+
+- **feat**: Added Vercel AI SDK integration
+  - **NEW EXPORT**: `wrapMaximAISDKModel` - Wrapper function for AI SDK models (available via `@maximai/maxim-js/vercel-ai-sdk`)
+  - **NEW TYPE**: `MaximVercelProviderMetadata` - Type for custom metadata in `providerOptions.maxim`
+  - Support for all AI SDK generation functions: `generateText`, `streamText`, `generateObject`, `streamObject`
+  - Automatic log component tracking with custom metadata support
+  - Comprehensive TypeScript support
+- **fix**: Prevented LangChain packages from being auto-installed when not needed because they were listed as optional dependencies
+  - Moved LangChain dependencies to devDependencies for cleaner installations and exported it via `@maximai/maxim-js/langchain`
+  - Improved build process to exclude development dependencies from published package
+- **feat**: Enhanced developer experience
+  - Added comprehensive JSDoc comments for better IntelliSense support
+  - Improved TypeScript type definitions throughout the library
+
 ### v6.5.0
 
 - **⚠️ BREAKING CHANGES**:
