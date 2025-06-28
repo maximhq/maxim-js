@@ -472,6 +472,18 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.6.0
+- **feat** Added AI SDK integration support
+- Introduced the `wrapMaximAISDKModel` function to easily wrap provider models (e.g., OpenAI, Anthropic) for seamless logging.
+- Supports `generateText`, `streamText`, `generateObject` and `streamObject` functions from AI SDK.
+- Custom metadata and tagging are supported via the providerOptions.maxim object, including:
+	- Custom names for traces, spans, generations, and sessions
+	- Custom tags for analytics and filtering
+	- Linking to existing sessions, traces, or spans by ID
+	- Type-completion for metadata is available via the `MaximVercelProviderMetadata` type.
+- **NEW OPTIONAL**: Added `@ai-sdk/provider` as an optional dependency - only needed if using `wrapMaximAISDKModel`
+See the updated documentation for code examples and advanced usage.
+
 ### v6.5.0
 
 - **⚠️ BREAKING CHANGES**:
