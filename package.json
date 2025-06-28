@@ -3,8 +3,9 @@
 	"description": "Maxim AI JS SDK. Visit https://getmaxim.ai for more info.",
 	"version": "6.5.0",
 	"scripts": {
-		"build": "npx tsc -p tsconfig.lib.json && npm run copy-assets",
-		"copy-assets": "copyfiles \"*.md\" package.json dist",
+		"build": "npx tsc -p tsconfig.lib.json && npm run copy-assets && npm run clean-package",
+		"copy-assets": "copyfiles \"*.md\" dist",
+		"clean-package": "node scripts/clean-package.js",
 		"publish": "node publish.mjs maxim-js $npm_config_version",
 		"lint": "eslint \"src/**/*.ts\"",
 		"test": "jest",
@@ -16,6 +17,8 @@
 		"@ai-sdk/openai": "^1.3.22",
 		"@langchain/anthropic": "^0.3.21",
 		"@langchain/community": "^0.3.46",
+		"@langchain/core": "^0.3.0",
+		"@ai-sdk/provider": "1.1.3",
 		"@langchain/langgraph": "^0.3.1",
 		"@langchain/openai": "^0.5.12",
 		"@types/jest": "29.5.14",
@@ -38,10 +41,6 @@
 		"@types/mime-types": "3.0.1",
 		"mime-types": "3.0.1"
 	},
-	"optionalDependencies": {
-		"@langchain/core": "^0.3.0",
-		"@ai-sdk/provider": "1.1.3"
-	},
 	"publishConfig": {
 		"access": "public"
 	},
@@ -57,5 +56,15 @@
 	},
 	"type": "commonjs",
 	"main": "index.js",
-	"typings": "index.d.ts"
+	"typings": "index.d.ts",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"default": "./index.js"
+		},
+		"./langchain": {
+			"types": "./langchain.d.ts",
+			"default": "./langchain.js"
+		}
+	}
 }

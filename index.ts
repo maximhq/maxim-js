@@ -2,10 +2,9 @@ export * from "./src/lib/cache/cache";
 export * from "./src/lib/dataset/dataset";
 export * from "./src/lib/evaluators/evaluators";
 export * from "./src/lib/logger/components";
-export { MaximLangchainTracer } from "./src/lib/logger/langchain/tracer";
-export { wrapMaximAISDKModel } from "./src/lib/logger/vercel/wrapper";
-export type { MaximVercelProviderMetadata } from './src/lib/logger/vercel/utils';
 export * from "./src/lib/logger/logger";
+export type { MaximVercelProviderMetadata } from './src/lib/logger/vercel/utils';
+export { wrapMaximAISDKModel } from "./src/lib/logger/vercel/wrapper";
 export * from "./src/lib/maxim";
 export * from "./src/lib/models/cache";
 export { VariableType } from "./src/lib/models/dataset";
@@ -15,3 +14,4 @@ export type { ChatCompletionMessage, Choice, CompletionRequest, PromptResponse }
 export * from "./src/lib/models/queryBuilder";
 export type { TestRunLogger, TestRunResult, YieldedOutput } from "./src/lib/models/testRun";
 export * from "./src/lib/utils/csvParser";
+
