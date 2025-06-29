@@ -8,6 +8,6 @@
 		"composite": true,
 		"sourceMap": true
 	},
-	"include": ["src/**/*.ts", "index.ts", "langchain.ts"],
+	"include": ["src/**/*.ts", "*.ts"],
 	"exclude": ["jest.config.ts", "src/**/*.spec.ts", "src/**/*.test.ts"]
 }

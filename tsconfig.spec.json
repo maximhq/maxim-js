@@ -7,5 +7,5 @@
 		"types": ["jest", "node"],
 		"composite": true
 	},
-	"include": ["index.ts", "langchain.ts", "src/**/*.test.ts", "src/**/*.spec.ts", "src/**/*.d.ts"]
+	"include": ["*.ts", "src/**/*.test.ts", "src/**/*.spec.ts", "src/**/*.d.ts"]
 }
