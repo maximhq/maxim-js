@@ -1,5 +1,5 @@
-const fs = require("fs");
-const path = require("path");
+const fs = require("node:fs");
+const path = require("node:path");
 
 // Read the source package.json
 const packagePath = path.join(__dirname, "..", "package.json");
@@ -10,6 +10,9 @@ const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 
 // Remove devDependencies
 delete packageJson.devDependencies;
+
+// Remove scripts that are only needed for development
+delete packageJson.scripts;
 
 // Remove scripts that are only needed for development
 const scriptsToRemove = ["lint", "test", "clean", "prebuild"];

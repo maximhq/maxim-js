@@ -1,0 +1,42 @@
+# Source files
+src/
+*.ts
+!*.d.ts
+
+# Documentation
+docs/
+typedoc.json
+DOCS.md
+
+# Configuration files
+tsconfig*.json
+eslint.config.mjs
+jest.config.js
+
+# Development files
+scripts/
+publish.mjs
+Makefile
+
+# Tests
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# Environment files
+.env*
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+
+# Build artifacts
+*.tsbuildinfo

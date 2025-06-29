@@ -1,0 +1,42 @@
+{
+	"entryPoints": ["index.ts", "langchain.ts"],
+	"out": "docs",
+	"plugin": ["typedoc-plugin-markdown", "typedoc-plugin-frontmatter"],
+	"theme": "markdown",
+	"readme": "README.md",
+	"tsconfig": "tsconfig.lib.json",
+	"cleanOutputDir": true,
+	"excludePrivate": true,
+	"excludeProtected": true,
+	"excludeExternals": true,
+	"excludeInternal": true,
+	"exclude": ["**/*.test.ts", "**/*.spec.ts"],
+	"hideGenerator": true,
+	"disableSources": false,
+	"gitRevision": "main",
+	"hideBreadcrumbs": true,
+	"hidePageHeader": true,
+	"frontmatterGlobals": {
+		"title": "%name%",
+		"sidebar_position": 1
+	},
+	"blockTags": [
+		"@async",
+		"@important",
+		"@param",
+		"@returns",
+		"@throws",
+		"@example",
+		"@property",
+		"@see",
+		"@template",
+		"@extends",
+		"@deprecated",
+		"@default"
+	],
+	"fileExtension": ".mdx",
+	"entryFileName": "overview.mdx",
+	"modulesFileName": "modules.mdx",
+	"membersWithOwnFile": ["Class", "Interface", "Enum"],
+	"publicPath": "."
+}

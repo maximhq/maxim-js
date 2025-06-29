@@ -1,8 +1,6 @@
 # Maxim SDK
 
-<div style="display: flex; justify-content: center; align-items: center;margin-bottom:20px;">
-<img src="https://cdn.getmaxim.ai/third-party/sdk.png">
-</div>
+![Maxim SDK Banner Image](https://cdn.getmaxim.ai/third-party/sdk.png)
 
 This is JS/TS SDK for enabling Maxim observability. [Maxim](https://www.getmaxim.ai?ref=npm) is an enterprise grade evaluation and observability platform.
 
