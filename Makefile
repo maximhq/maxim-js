@@ -62,6 +62,12 @@ copy-assets:
 	@echo "Copying assets..."
 	npm run copy-assets
 
+# Clean package.json for distribution
+.PHONY: clean-package
+clean-package:
+	@echo "Cleaning package.json for distribution..."
+	npm run clean-package
+
 # Build the library
 .PHONY: build
 build: clean
