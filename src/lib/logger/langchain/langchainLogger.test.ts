@@ -15,7 +15,8 @@ import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { createRetrievalChain } from "langchain/chains/retrieval";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { z } from "zod";
-import { Maxim, MaximLangchainTracer } from "../../../../index";
+import { Maxim } from "../../../../index";
+import { MaximLangchainTracer } from "../../../../langchain";
 
 // Configure dotenv
 config();

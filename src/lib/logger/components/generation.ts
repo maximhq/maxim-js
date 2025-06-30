@@ -40,21 +40,21 @@ export interface TextCompletionResult {
 	error?: GenerationError;
 }
 
-interface Logprobs {
+export interface Logprobs {
 	text_offset?: Array<number>;
 	token_logprobs?: Array<number>;
 	tokens?: Array<string>;
 	top_logprobs?: Array<Record<string, number>>;
 }
 
-interface ChatCompletionChoice {
+export interface ChatCompletionChoice {
 	index: number;
 	message: ChatCompletionMessage;
 	logprobs: Logprobs | null;
 	finish_reason: string;
 }
 
-interface TextCompletionChoice {
+export interface TextCompletionChoice {
 	index: number;
 	text: string;
 	logprobs: Logprobs | null;
@@ -64,7 +64,7 @@ interface TextCompletionChoice {
 /**
  * Token usage statistics for a generation request.
  */
-interface Usage {
+export interface Usage {
 	prompt_tokens: number;
 	completion_tokens: number;
 	total_tokens: number;
