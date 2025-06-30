@@ -20,6 +20,9 @@ declare global {
 	var __maxim__sdk__instances__: Map<string, Maxim>;
 }
 
+/**
+ * Configuration object for initializing the Maxim SDK.
+ */
 export type Config = {
 	/**
 	 * Base URL for the Maxim API.
@@ -67,6 +70,81 @@ enum EntityType {
 	FOLDER,
 }
 
+/**
+ * Main class for the Maxim SDK that provides access to all platform features.
+ *
+ * The Maxim class is the primary entry point for interacting with the Maxim
+ * observability platform. It provides methods for prompt management, logging,
+ * dataset operations, and test run execution. The class handles authentication,
+ * caching, and API communication.
+ *
+ * @class Maxim
+ * @example
+ * import { Maxim } from '@maximai/maxim-js';
+ *
+ * // Basic initialization
+ * const maxim = new Maxim({
+ *   apiKey: 'your-api-key'
+ * });
+ *
+ * @example
+ * // Full configuration
+ * const maxim = new Maxim({
+ *   apiKey: 'your-api-key',
+ *   baseUrl: 'https://app.getmaxim.ai',
+ *   promptManagement: true,
+ *   debug: true,
+ *   cache: new CustomCacheImplementation()
+ * });
+ *
+ * @example
+ * // Using prompt management
+ * const maxim = new Maxim({
+ *   apiKey: 'your-api-key',
+ *   promptManagement: true
+ * });
+ *
+ * // Get a prompt with deployment rules
+ * const rule = new QueryBuilder()
+ *   .deploymentVar('environment', 'production')
+ *   .tag('version', 'v2.0')
+ *   .build();
+ *
+ * const prompt = await maxim.getPrompt('prompt-id', rule);
+ * if (prompt) {
+ *   const response = await prompt.run('Hello world');
+ *   console.log(response.choices[0].message.content);
+ * }
+ *
+ * @example
+ * // Creating and running test runs
+ * const testResult = await maxim
+ *   .createTestRun('sample-test-run', 'workspace-id')
+ *   .withDataStructure({
+ *     input: 'INPUT',
+ *     expectedOutput: 'EXPECTED_OUTPUT'
+ *   })
+ *   .withData('dataset-id')
+ *   .withEvaluators('bias', 'toxicity')
+ *   .yieldsOutput(async (data) => {
+ *     const response = await callYourModel(data.input);
+ *     return { data: response };
+ *   })
+ *   .run();
+ *
+ * @example
+ * // Logging with Maxim
+ * const logger = await maxim.logger({ id: 'my-app' });
+ * const session = logger.session({ id: 'session-1', name: 'User session' });
+ * const trace = session.trace({ id: 'trace-1', name: 'Query Processing', sessionId: 'session-1' });
+ *
+ * // ... Log other operations
+ *
+ * trace.end();
+ *
+ * // finally, before app shutdown
+ * await maxim.cleanup();
+ */
 export class Maxim {
 	private readonly apiKey: string;
 	private readonly baseUrl;
@@ -85,6 +163,40 @@ export class Maxim {
 	};
 	private _raiseExceptions: boolean;
 
+	/**
+	 * Creates a new Maxim SDK instance.
+	 *
+	 * @param config - Configuration object for the SDK
+	 * @throws {Error} When the API key is not provided
+	 * @important **CRITICAL**: Always call `cleanup()` before your application
+	 * exits. Failure to do so may result in memory leaks, unflushed data, or
+	 * hanging processes. This is especially important in production environments
+	 * and long-running applications.
+	 * @example
+	 * const maxim = new Maxim({
+	 *   apiKey: process.env.MAXIM_API_KEY,
+	 *   promptManagement: true,
+	 *   debug: process.env.NODE_ENV === 'development'
+	 * });
+	 *
+	 * @example
+	 * // With custom cache
+	 * import { RedisCacheImplementation } from './custom-cache';
+	 *
+	 * const maxim = new Maxim({
+	 *   apiKey: 'your-api-key',
+	 *   cache: new RedisCacheImplementation({
+	 *     host: 'localhost',
+	 *     port: 6379
+	 *   })
+	 * });
+	 *
+	 * // Always remember to cleanup before exit
+	 * process.on('SIGINT', async () => {
+	 *   await maxim.cleanup();
+	 *   process.exit(0);
+	 * });
+	 */
 	constructor(config: Config) {
 		if (!config.apiKey) {
 			throw new Error("[Maxim-SDK] API key is required");
@@ -617,20 +729,42 @@ export class Maxim {
 	}
 
 	/**
-	 * This method is used to get a prompt by id that matches the query rule
+	 * Retrieves a specific prompt by ID that matches the given query rule.
+	 *
+	 * This method fetches a prompt from the Maxim platform based on deployment rules
+	 * and query criteria. It supports versioning and rule-based prompt selection.
+	 *
 	 * @async
-	 * @param {string} promptId - Prompt id to fetch
-	 * @param {QueryRule} rule - Query rule to match
-	 * @returns {Promise<Prompt>} a single prompt
-	 * @throws {Error} If no active deployments found for the prompt matching the query rule and id
+	 * @param promptId - The unique identifier of the prompt to fetch
+	 * @param rule - Query rule defining deployment variables, tags, and matching criteria
+	 * @returns The matching prompt with run capabilities, or undefined if not found
+	 * @throws {Error} When prompt management is not enabled
+	 * @throws {Error} When no active deployments found for the prompt matching the query rule
 	 * @example
-	 * const prompt = await maxim.getPrompt(
-	 *  "promptId",
-	 *  new QueryBuilder()
-	 *      .and()
-	 *      .deploymentVar("Environment", "Production")
-	 *      .build()
-	 * );
+	 * import { QueryBuilder } from '@maximai/maxim-js';
+	 *
+	 * const rule = new QueryBuilder()
+	 *   .deploymentVar('environment', 'production')
+	 *   .tag('version', 'v2.0')
+	 *   .build();
+	 *
+	 * const prompt = await maxim.getPrompt('user-greeting-prompt-id', rule);
+	 * if (prompt) {
+	 *   const response = await prompt.run('Hello!', {
+	 *     variables: { userName: 'John' },
+	 *     imageUrls: []
+	 *   });
+	 *   console.log(response.choices[0].message.content);
+	 * }
+	 *
+	 * @example
+	 * // Using folder-scoped queries
+	 * const rule = new QueryBuilder()
+	 *   .folder('customer-service-folder')
+	 *   .deploymentVar('language', 'en')
+	 *   .build();
+	 *
+	 * const prompt = await maxim.getPrompt('support-template', rule);
 	 */
 	public async getPrompt(promptId: string, rule: QueryRule): Promise<Prompt | undefined> {
 		try {
@@ -666,18 +800,42 @@ export class Maxim {
 	}
 
 	/**
-	 * This method is used to get all prompts that match the query rule
+	 * Retrieves all prompts that match the given query rule.
+	 *
+	 * This method fetches multiple prompts from the Maxim platform based on
+	 * deployment rules and query criteria. Useful for getting all prompts
+	 * within a specific folder or matching certain deployment variables.
+	 *
 	 * @async
-	 * @param {QueryRule} rule - Query rule to match
-	 * @returns {Promise<Prompt[]>} Array of prompts
-	 * @throws {Error} If no active deployments found for any prompt matching the query rule
+	 * @param rule - Query rule defining deployment variables, tags, and matching criteria
+	 * @returns Array of matching prompts with run capabilities, or undefined if none found
+	 * @throws {Error} When prompt management is not enabled
+	 * @throws {Error} When no active deployments found for any prompt matching the query rule
 	 * @example
-	 * const prompts = await maxim.getPrompts(
-	 *  new QueryBuilder()
-	 *      .and()
-	 *      .deploymentVar("Environment", "Production")
-	 *      .build()
-	 * );
+	 * import { QueryBuilder } from '@maximai/maxim-js';
+	 *
+	 * // Get all production prompts in a specific folder
+	 * const rule = new QueryBuilder()
+	 *   .folder('customer-support')
+	 *   .deploymentVar('environment', 'production')
+	 *   .build();
+	 *
+	 * const prompts = await maxim.getPrompts(rule);
+	 * if (prompts) {
+	 *   for (const prompt of prompts) {
+	 *     console.log(`Prompt: ${prompt.promptId}, Version: ${prompt.version}`);
+	 *   }
+	 * }
+	 *
+	 * @example
+	 * // Get all prompts with specific tags
+	 * const rule = new QueryBuilder()
+	 *   .tag('category', 'greeting')
+	 *   .tag('language', 'english')
+	 *   .and()
+	 *   .build();
+	 *
+	 * const greetingPrompts = await maxim.getPrompts(rule);
 	 */
 	public async getPrompts(rule: QueryRule): Promise<Prompt[] | undefined> {
 		try {
@@ -722,20 +880,42 @@ export class Maxim {
 	}
 
 	/**
-	 * This method is used to get a prompt chain by id that matches the query rule
+	 * Retrieves a specific prompt chain by ID that matches the given query rule.
+	 *
+	 * This method fetches a prompt chain from the Maxim platform based on deployment rules
+	 * and query criteria. It supports versioning and rule-based prompt chain selection.
+	 * Prompt chains allow you to orchestrate multiple prompts in sequence with conditional logic.
+	 *
 	 * @async
-	 * @param {string} promptChainId - Prompt chain id to fetch
-	 * @param {QueryRule} rule - Query rule to match
-	 * @returns {Promise<PromptChain>} a single prompt chain
-	 * @throws {Error} If no active deployments found for the prompt chain matching the query rule and id
+	 * @param promptChainId - The unique identifier of the prompt chain to fetch
+	 * @param rule - Query rule defining deployment variables, tags, and matching criteria
+	 * @returns The matching prompt chain with run capabilities, or undefined if not found
+	 * @throws {Error} When prompt management is not enabled
+	 * @throws {Error} When no active deployments found for the prompt chain matching the query rule
 	 * @example
-	 * const promptChain = await maxim.getPromptChain(
-	 *  "promptChainId",
-	 *  new QueryBuilder()
-	 *      .and()
-	 *      .deploymentVar("Environment", "Production")
-	 *      .build()
-	 * );
+	 * import { QueryBuilder } from '@maximai/maxim-js';
+	 *
+	 * const rule = new QueryBuilder()
+	 *   .deploymentVar('environment', 'production')
+	 *   .tag('version', 'v2.0')
+	 *   .build();
+	 *
+	 * const promptChain = await maxim.getPromptChain('user-onboarding-chain-id', rule);
+	 * if (promptChain) {
+	 *   const response = await promptChain.run('New user registration', {
+	 *     variables: { userName: 'John', userType: 'premium' }
+	 *   });
+	 *   console.log(response.finalOutput);
+	 * }
+	 *
+	 * @example
+	 * // Using folder-scoped queries
+	 * const rule = new QueryBuilder()
+	 *   .folder('customer-onboarding-folder')
+	 *   .deploymentVar('language', 'en')
+	 *   .build();
+	 *
+	 * const promptChain = await maxim.getPromptChain('welcome-sequence', rule);
 	 */
 	public async getPromptChain(promptChainId: string, rule: QueryRule): Promise<PromptChain | undefined> {
 		try {
@@ -771,18 +951,42 @@ export class Maxim {
 	}
 
 	/**
-	 * This method is used to get all prompt chains that match the query rule
+	 * Retrieves all prompt chains that match the given query rule.
+	 *
+	 * This method fetches multiple prompt chains from the Maxim platform based on
+	 * deployment rules and query criteria. Useful for getting all prompt chains
+	 * within a specific folder or matching certain deployment variables.
+	 *
 	 * @async
-	 * @param {QueryRule} rule - Query rule to match
-	 * @returns {Promise<PromptChain[]>} Array of prompt chains
-	 * @throws {Error} If no active deployments found for any prompt chain matching the query rule
+	 * @param rule - Query rule defining deployment variables, tags, and matching criteria
+	 * @returns Array of matching prompt chains with run capabilities, or undefined if none found
+	 * @throws {Error} When prompt management is not enabled
+	 * @throws {Error} When no active deployments found for any prompt chain matching the query rule
 	 * @example
-	 * const promptChains = await maxim.getPromptChains(
-	 *  new QueryBuilder()
-	 *      .and()
-	 *      .deploymentVar("Environment", "Production")
-	 *      .build()
-	 * );
+	 * import { QueryBuilder } from '@maximai/maxim-js';
+	 *
+	 * // Get all production prompt chains in a specific folder
+	 * const rule = new QueryBuilder()
+	 *   .folder('customer-support')
+	 *   .deploymentVar('environment', 'production')
+	 *   .build();
+	 *
+	 * const promptChains = await maxim.getPromptChains(rule);
+	 * if (promptChains) {
+	 *   for (const promptChain of promptChains) {
+	 *     console.log(`Prompt Chain: ${promptChain.promptChainId}, Version: ${promptChain.version}`);
+	 *   }
+	 * }
+	 *
+	 * @example
+	 * // Get all prompt chains with specific tags
+	 * const rule = new QueryBuilder()
+	 *   .tag('category', 'workflow')
+	 *   .tag('complexity', 'advanced')
+	 *   .and()
+	 *   .build();
+	 *
+	 * const workflowChains = await maxim.getPromptChains(rule);
 	 */
 	public async getPromptChains(rule: QueryRule): Promise<PromptChain[] | undefined> {
 		try {
@@ -829,8 +1033,8 @@ export class Maxim {
 	/**
 	 * This method is used to get a folder by id
 	 * @async
-	 * @param {string} folderId - Folder id to fetch
-	 * @returns {Promise<Folder>} a single folder
+	 * @param folderId - Folder id to fetch
+	 * @returns a single folder
 	 * @throws {Error} If no folder found with id
 	 * @example
 	 * const folder = await maxim.getFolderById("folderId");
@@ -864,8 +1068,8 @@ export class Maxim {
 	/**
 	 * This method is used to get all folders that match the query rule
 	 * @async
-	 * @param {QueryRule} rule - Query rule to match
-	 * @returns {Promise<Folder[]>} Array of folders
+	 * @param rule - Query rule to match
+	 * @returns Array of folders
 	 * @throws {Error} If no folders found matching the query rule
 	 * @example
 	 * const folders = await maxim.getFolders(
@@ -904,9 +1108,9 @@ export class Maxim {
 	/**
 	 * This method is used to add entries to a dataset
 	 * @async
-	 * @param {string} datasetId Dataset id to add entries to
-	 * @param {DatasetEntry[]} entries Entries to add to the dataset
-	 * @returns {Promise<void>} void
+	 * @param datasetId Dataset id to add entries to
+	 * @param entries Entries to add to the dataset
+	 * @returns void
 	 * @example
 	 * await maxim.addDatasetEntries("datasetId", [
 	 * 	{
@@ -930,17 +1134,42 @@ export class Maxim {
 	}
 
 	/**
-	 * This method is used to create a logger
+	 * Creates a logger instance for capturing observability data.
+	 *
+	 * The logger provides methods for tracking sessions, traces, generations, and
+	 * other observability events. It handles buffering, batching, and sending data
+	 * to the Maxim platform.
+	 *
 	 * @async
-	 * @param {LoggerConfig} config - Logger config
-	 * @returns {Promise<MaximLogger>} Logger instance
-	 * @throws {Error} If no log repository is found with the given id
+	 * @param config - Configuration for the logger instance
+	 * @returns Logger instance for capturing observability data, or undefined if creation fails
+	 * @throws {Error} When the specified log repository is not found
 	 * @example
+	 * // Basic logger creation
 	 * const logger = await maxim.logger({
-	 * 	id: "logRepositoryId",
-	 * 	autoFlush: true, // default value
-	 * 	flushIntervalSeconds: 10, // default value
+	 *   id: 'my-repository-id',
 	 * });
+	 *
+	 * if (logger) {
+	 *   // Create a session for user interactions
+	 *   const session = logger.session({
+	 *     id: 'user-session-123',
+	 *     name: 'Customer Support Chat'
+	 *   });
+	 *
+	 *   // Create a trace for a specific operation
+	 *   const trace = session.trace({
+	 *     id: 'query-trace-456',
+	 *     name: 'Customer Query Processing'
+	 *   });
+	 *
+	 *   // ... Log other operations
+	 *
+	 *   trace.end();
+	 *
+	 *   // finally, before app shutdown
+	 *   await maxim.cleanup();
+	 * }
 	 */
 	public async logger(config: LoggerConfig): Promise<MaximLogger | undefined> {
 		try {
@@ -977,9 +1206,9 @@ export class Maxim {
 
 	/**
 	 * This method is used to create a test run
-	 * @param {string} name - Name of the test run
-	 * @param {string} inWorkspaceId - Workspace Id to create the test run in
-	 * @returns {TestRunBuilder} Test run instance
+	 * @param name - Name of the test run
+	 * @param inWorkspaceId - Workspace Id to create the test run in
+	 * @returns Test run instance
 	 * @example
 	 * // You can keep chaining methods to
 	 * // the created test run to configure it
@@ -994,8 +1223,40 @@ export class Maxim {
 	}
 
 	/**
-	 * This method is used to cleanup all loggers and interval handles for syncing entities
+	 * Cleans up all SDK resources and prepares for application shutdown.
+	 *
+	 * This method performs essential cleanup operations including stopping sync intervals,
+	 * flushing logger data, clearing caches, and destroying HTTP agents. It ensures proper
+	 * resource deallocation and prevents memory leaks.
+	 *
 	 * @async
+	 * @important **CRITICAL**: Always call this method before your application
+	 * exits. Failure to do so may result in memory leaks, unflushed data, or
+	 * hanging processes. This is especially important in production environments
+	 * and long-running applications.
+	 * @example
+	 * // Basic cleanup on application shutdown
+	 * process.on('SIGINT', async () => {
+	 *   console.log('Shutting down gracefully...');
+	 *   await maxim.cleanup();
+	 *   process.exit(0);
+	 * });
+	 *
+	 * @example
+	 * // Cleanup in Express.js application
+	 * process.on('SIGTERM', async () => {
+	 *   console.log('SIGTERM received, shutting down...');
+	 *   await maxim.cleanup();
+	 *   server.close(() => {
+	 *     process.exit(0);
+	 *   });
+	 * });
+	 *
+	 * @example
+	 * // Cleanup in test suites
+	 * afterAll(async () => {
+	 *   await maxim.cleanup();
+	 * });
 	 */
 	public async cleanup() {
 		try {

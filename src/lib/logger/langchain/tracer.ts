@@ -27,11 +27,67 @@ type HandleToolEndParameters = Parameters<NonNullable<BaseCallbackHandler["handl
 type HandleToolErrorParameters = Parameters<NonNullable<BaseCallbackHandler["handleToolError"]>>;
 type HandleChainErrorParameters = Parameters<NonNullable<BaseCallbackHandler["handleChainError"]>>;
 
+/**
+ * LangChain callback handler for automatic observability with the Maxim platform.
+ *
+ * Extends LangChain's BaseCallbackHandler to automatically trace and log
+ * LangChain application executions including LLM calls, chains, tools, and
+ * retrievers. Seamlessly integrates with existing LangChain applications
+ * to provide comprehensive observability without code changes.
+ *
+ * @class MaximLangchainTracer
+ * @extends {BaseCallbackHandler}
+ * @example
+ * import { MaximLangchainTracer } from '@maximai/maxim-js';
+ * import { ChatOpenAI } from '@langchain/openai';
+ *
+ * // Basic setup
+ * const maxim = new Maxim({ apiKey: 'your-api-key' });
+ * const logger = await maxim.logger({ id: 'langchain-app' });
+ * const tracer = new MaximLangchainTracer(logger);
+ *
+ * // Use with LangChain models
+ * const model = new ChatOpenAI({
+ *   openAIApiKey: process.env.OPENAI_API_KEY,
+ *   modelName: "gpt-4o-mini",
+ *   callbacks: [tracer],
+ *   metadata: {
+ *     maxim: {
+ *       generationName: "basic-openai-chat",
+ *       generationTags: { testType: "basic", model: "openai" }
+ *     },
+ *   },
+ * });
+ *
+ * const response = await model.invoke("Hello world");
+ * // Automatically logged to Maxim
+ */
 export class MaximLangchainTracer extends BaseCallbackHandler {
 	override readonly name = "MaximLangchainTracer";
 	private containerManager: ContainerManager = new ContainerManager();
 
-	constructor(private readonly logger: MaximLogger, input?: BaseCallbackHandlerInput) {
+	/**
+	 * Creates a new MaximLangchainTracer instance.
+	 *
+	 * @param logger - The Maxim logger instance to use for tracing
+	 * @param input - Optional LangChain callback handler configuration
+	 * @example
+	 * const maxim = new Maxim({ apiKey: 'your-api-key' });
+	 * const logger = await maxim.logger({ id: 'my-app' });
+	 * const tracer = new MaximLangchainTracer(logger);
+	 *
+	 * @example
+	 * // With custom callback configuration
+	 * const tracer = new MaximLangchainTracer(logger, {
+	 *   ignoreLLM: false,
+	 *   ignoreChain: false,
+	 *   ignoreAgent: false
+	 * });
+	 */
+	constructor(
+		private readonly logger: MaximLogger,
+		input?: BaseCallbackHandlerInput,
+	) {
 		super(input);
 	}
 
