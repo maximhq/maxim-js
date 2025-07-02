@@ -17,7 +17,8 @@ export function parseIncomingQuery(incomingQuery: string): RuleType[] {
 		return [];
 	}
 	const operators = ["!=", ">=", "<=", ">", "<", "includes", "does not include", "="]; // Ensure longer operators come first
-	return incomingQuery.split(",").map((condition) => {
+	// Split only using commas that are not inside square brackets
+	return incomingQuery.split(/,(?![^[\]]*\])/).map((condition) => {
 		for (let op of operators) {
 			if (condition.includes(op)) {
 				let [field, value] = condition.split(op).map((s) => s.trim());
@@ -31,6 +32,12 @@ export function parseIncomingQuery(incomingQuery: string): RuleType[] {
 				if (!isNaN(Number(value))) {
 					return { field, value: Number(value), operator, exactMatch };
 				}
+				try {
+					const parsedValue = JSON.parse(value);
+					if(Array.isArray(parsedValue) && parsedValue.length > 0 &&  typeof parsedValue[0] === "string") {
+						return { field, value: parsedValue as string[], operator, exactMatch };
+					}
+				} catch (error) {}
 				return { field: field, value, operator, exactMatch };
 			}
 		}
@@ -61,10 +68,17 @@ function evaluateRuleGroup(ruleGroup: RuleGroupType, incomingQueryRules: RuleTyp
 							fieldIncomingRule.value = Boolean(fieldIncomingRule.value);
 						} else if (typeof fieldRule.value === "string") {
 							fieldIncomingRule.value = String(fieldIncomingRule.value);
+						} else if (Array.isArray(fieldRule.value)) {
+							try {
+								fieldIncomingRule.value = JSON.parse(fieldIncomingRule.value as string);
+							} catch (error) {}
 						}
 					}
 					switch (fieldRule.operator) {
 						case "=":
+							if(Array.isArray(fieldRule.value)) {
+								return JSON.stringify(fieldRule.value) === JSON.stringify(fieldIncomingRule.value);
+							}
 							return fieldRule.value === fieldIncomingRule.value;
 						case "!=":
 							return fieldRule.value !== fieldIncomingRule.value;
@@ -77,6 +91,9 @@ function evaluateRuleGroup(ruleGroup: RuleGroupType, incomingQueryRules: RuleTyp
 						case "<=":
 							return fieldRule.value <= fieldIncomingRule.value;
 						case "includes":
+							if(Array.isArray(fieldIncomingRule.value) && Array.isArray(fieldRule.value)) {
+								return (fieldIncomingRule.value as string[]).every(el => (fieldRule.value as string[]).includes(el));
+							}
 							return (fieldRule.value as string[]).includes(fieldIncomingRule.value as string);
 						case "does not include":
 							return !(fieldRule.value as string[]).includes(fieldIncomingRule.value as string);

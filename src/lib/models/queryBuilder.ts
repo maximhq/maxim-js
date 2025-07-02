@@ -181,9 +181,9 @@ export class QueryBuilder {
 	 *   .deploymentVar('beta_enabled', true)       // boolean
 	 *   .build();
 	 */
-	public deploymentVar(key: string, value: string | number | boolean, enforce: boolean = true) {
+	public deploymentVar(key: string, value: string | number | boolean | string[], enforce: boolean = true) {
 		if (this.query.length > 0) this.query += ",";
-		this.query += `${enforce ? "!!" : ""}${key}=${value}`;
+		this.query += `${enforce ? "!!" : ""}${key}=${Array.isArray(value) ? JSON.stringify(value) : value}`;
 		return this;
 	}
 
