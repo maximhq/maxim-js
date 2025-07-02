@@ -483,6 +483,7 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 - **feat**: Enhanced developer experience
   - Added comprehensive JSDoc comments for better IntelliSense support
   - Improved TypeScript type definitions throughout the library
+- **fix**: Fixes boolean deployment var comparison issue for both prompt and prompt chain deployments
 
 ### v6.5.0
 
@@ -579,6 +580,130 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 **Adding attachments**
 
 ```js
+// Add file as attachment
+entity.addAttachment({
+	id: uuid(),
+	type: "file",
+	path: "/path/to/file.pdf",
+});
+
+// Add buffer data as attachment
+const buffer = fs.readFileSync("image.png");
+entity.addAttachment({
+	id: uuid(),
+	type: "fileData",
+	data: buffer,
+});
+
+// Add URL as attachment
+entity.addAttachment({
+	id: uuid(),
+	type: "url",
+	url: "https://example.com/image.jpg",
+});
+```
+
+### v6.5.0
+⚠️ BREAKING CHANGES:
+
+Prompt.messages type changed: The messages field type has been updated for better type safety
+
+Before: { role: string; content: string | CompletionRequestContent[] }[]
+After: (CompletionRequest | ChatCompletionMessage)[]
+Migration: Update your code to use the new CompletionRequest interface which has more specific role types ("user" | "system" | "tool" | "function") instead of generic string
+
+```js
+// Before (v6.4.x and earlier)
+const messages: { role: string; content: string }[] = [{ role: "user", content: "Hello" }];
+
+// After (v6.5.0+)
+const messages: CompletionRequest[] = [
+	{ role: "user", content: "Hello" }, // role is now type-safe
+];
+```
+
+GenerationConfig.messages type changed: For better type safety and tool call support
+
+Before: messages: CompletionRequest[]
+After: messages: (CompletionRequest | ChatCompletionMessage)[]
+Migration: Your existing CompletionRequest[] arrays will still work, but you can now also pass ChatCompletionMessage[] for assistant responses with tool calls
+Generation.addMessages() method signature changed:
+
+Before: addMessages(messages: CompletionRequest[])
+After: addMessages(messages: (CompletionRequest | ChatCompletionMessage)[])
+Migration: Your existing calls will still work, but you can now also pass assistant messages with tool calls
+MaximLogger.generationAddMessage() method signature changed:
+
+Before: generationAddMessage(generationId: string, messages: CompletionRequest[])
+After: generationAddMessage(generationId: string, messages: (CompletionRequest | ChatCompletionMessage)[])
+Migration: Your existing calls will still work, but you can now also pass assistant messages with tool calls
+feat: Added LangChain integration with MaximLangchainTracer
+
+Comprehensive tracing support for LangChain and LangGraph applications
+Automatic detection of 8+ LLM providers (OpenAI, Anthropic, Google, Bedrock, etc.)
+Support for chains, agents, retrievers, and tool calls
+Custom metadata and tagging capabilities
+Added @langchain/core as optional dependency
+feat: Enhanced prompt and prompt chain execution capabilities
+
+NEW METHOD: Prompt.run(input, options?) - Execute prompts directly from Prompt objects
+NEW METHOD: PromptChain.run(input, options?) - Execute prompt chains directly from PromptChain objects
+Support for image URLs when running prompts via ImageUrl type
+Support for variables in prompt execution
+feat: New types and interfaces for improved type safety
+
+NEW TYPE: PromptResponse - Standardized response format for prompt executions
+NEW TYPE: AgentResponse - Standardized response format for prompt chain executions
+ENHANCED TYPE: ChatCompletionMessage - More specific interface for assistant messages with tool call support
+ENHANCED TYPE: CompletionRequest - More specific interface with type-safe roles
+NEW TYPE: Choice, Usage - Supporting types for response data with token usage
+NEW TYPE: ImageUrl - Type for image URL content in prompts (extracted from CompletionRequestImageUrlContent)
+NEW TYPE: AgentCost, AgentUsage, AgentResponseMeta - Supporting types for agent responses
+feat: Test run improvements with prompt chain support
+
+Enhanced test run execution with cost and usage tracking for prompt chains
+Support for prompt chains alongside existing prompt and workflow support
+NEW METHOD: TestRunBuilder.withPromptChainVersionId(id, contextToEvaluate?) - Add prompt chain to test runs
+feat: Enhanced exports for better developer experience
+
+NEW EXPORT: MaximLangchainTracer - Main LangChain integration class
+NEW EXPORTS: ChatCompletionMessage, Choice, CompletionRequest, PromptResponse - Core types now available for external use
+Enhanced type safety and IntelliSense support for prompt handling
+feat: Standalone package configuration
+
+MIGRATION: Moved from NX monorepo to standalone package (internal change, no user action needed)
+Added comprehensive build, test, and lint scripts
+Updated TypeScript configuration for ES2022 target
+Added Prettier and ESLint configuration files
+NEW EXPORT: VariableType from dataset models
+deps: LangChain ecosystem support (all optional)
+
+NEW OPTIONAL: @langchain/core as optional dependency (^0.3.0) - only needed if using MaximLangchainTracer
+Migration Guide for v6.5.0:
+
+If you access Prompt.messages directly: Update your type annotations to use CompletionRequest | ChatCompletionMessage types
+If you create custom prompt objects: Ensure your messages array uses the new interface structure
+If you use Generation.addMessages(): The method now accepts (CompletionRequest | ChatCompletionMessage)[] - your existing code will work unchanged
+If you use MaximLogger.generationAddMessage(): The method now accepts (CompletionRequest | ChatCompletionMessage)[] - your existing code will work unchanged
+If you create GenerationConfig objects: The messages field now accepts (CompletionRequest | ChatCompletionMessage)[] - your existing code will work unchanged
+To use LangChain integration: Install @langchain/core and import MaximLangchainTracer
+No action needed for: Regular SDK usage through maxim.logger(), test runs, or prompt management APIs
+⚠️ Note: While these are technically breaking changes at the type level, most existing code will continue to work because CompletionRequest[] is compatible with (CompletionRequest | ChatCompletionMessage)[]. You may only see TypeScript compilation errors if you have strict type checking enabled.
+
+## v6.4.0
+- feat: adds provider field to the Prompt type. This field specifies the LLM provider (e.g., 'openai', 'anthropic', etc.) for the prompt.
+- feat: include Langchain integration in the main repository
+
+## v6.3.0
+
+- feat: adds attachments support to Trace, Span, and Generation for file uploads.
+- 3 attachment types are supported: file path, buffer data, and URL has auto-detection of MIME types, file sizes, and names for attachments wherever possible
+- fix: refactored message handling for Generations to prevent keeping messages reference but rather duplicates the object to ensure point in time capture.
+- fix: ensures proper cleanup of resources 
+
+```js
+Adding attachments
+
 // Add file as attachment
 entity.addAttachment({
 	id: uuid(),

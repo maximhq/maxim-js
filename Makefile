@@ -18,7 +18,12 @@ help:
 	@echo "  test        - Run tests"
 	@echo "  test-ci     - Run tests (ignore failures for missing config)"
 	@echo "  build       - Build the library (with TypeScript optimization)"
-	@echo "  publish     - Publish to npm (usage: make publish VERSION=1.0.0)"
+	@echo "  version     - Update version in package.json (usage: make version VERSION=1.0.0)"
+	@echo "  publish     - Publish to npm with git tag and GitHub release (uses version from package.json, extracts notes from README.md)"
+	@echo "  release     - Publish with custom release notes (usage: make release NOTES='Release notes')"
+	@echo "  preview-release - Preview release notes from README.md (usage: make preview-release [NOTES='Notes'])"
+	@echo "  test-readme-parsing - Test README.md parsing for debugging (usage: make test-readme-parsing [VERSION=1.0.0])"
+	@echo "  create-release - Create git tag and GitHub release (usage: make create-release VERSION=1.0.0 [NOTES='Notes'])"
 	@echo "  dev         - Development mode (install + build)"
 	@echo "  ci          - CI pipeline (install + lint + test-ci + build)"
 	@echo "  deps-check  - Check for outdated dependencies"
@@ -74,15 +79,143 @@ build: clean
 	@echo "Building library..."
 	npm run build
 
+# Update version in package.json
+.PHONY: version
+version:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION is required. Usage: make version VERSION=1.0.0"; \
+		exit 1; \
+	fi
+	@set -e; \
+	echo "Updating version to $(VERSION) in package.json..."; \
+	npm version $(VERSION) --no-git-tag-version; \
+	echo "Version updated to $(VERSION)"
+
 # Publish to npm
 .PHONY: publish
 publish: build
 	@echo "Publishing to npm..."
+	@set -e; \
+	VERSION=$$(node -p "require('./package.json').version"); \
+	echo "Publishing version $$VERSION..."; \
+	node publish.mjs $(PACKAGE_NAME) $$VERSION; \
+	echo "Creating git tag and GitHub release..."; \
+	$(MAKE) create-release VERSION=$$VERSION
+
+# Test README.md parsing (for debugging)
+.PHONY: test-readme-parsing
+test-readme-parsing:
+	@echo "Testing README.md parsing..."
+	@set -e; \
+	if [ -n "$(VERSION)" ]; then \
+		TEST_VERSION="$(VERSION)"; \
+	else \
+		TEST_VERSION=$$(node -p "require('./package.json').version"); \
+	fi; \
+	echo "Testing extraction for version: $$TEST_VERSION"; \
+	if [ -f "README.md" ]; then \
+		echo "--- Testing with 'v' prefix ---"; \
+		awk '/^### v'$$TEST_VERSION'$$/{flag=1; next} /^### v[0-9]/{flag=0} flag' README.md; \
+		echo "--- Testing without 'v' prefix ---"; \
+		awk '/^### '$$TEST_VERSION'$$/{flag=1; next} /^### [0-9]/{flag=0} flag' README.md; \
+	else \
+		echo "README.md not found"; \
+	fi
+
+# Preview release notes without creating release
+.PHONY: preview-release
+preview-release:
+	@set -e; \
+	VERSION=$$(node -p "require('./package.json').version"); \
+	echo "Version: $$VERSION"; \
+	if [ -n "$(NOTES)" ]; then \
+		echo "Custom release notes:"; \
+		echo "$(NOTES)"; \
+	else \
+		echo "Release notes from README.md:"; \
+		if [ -f "README.md" ]; then \
+			awk '/^### v'$$VERSION'$$/{flag=1; next} /^### v[0-9]/{flag=0} flag' README.md > /tmp/preview_notes.txt; \
+			if [ -s /tmp/preview_notes.txt ]; then \
+				cat /tmp/preview_notes.txt; \
+			else \
+				awk '/^### '$$VERSION'$$/{flag=1; next} /^### [0-9]/{flag=0} flag' README.md > /tmp/preview_notes.txt; \
+				if [ -s /tmp/preview_notes.txt ]; then \
+					cat /tmp/preview_notes.txt; \
+				else \
+					echo "No release notes found for $$VERSION in README.md"; \
+				fi; \
+			fi; \
+			rm -f /tmp/preview_notes.txt; \
+		else \
+			echo "README.md not found"; \
+		fi; \
+	fi
+
+# Create git tag and GitHub release
+.PHONY: create-release
+create-release:
 	@if [ -z "$(VERSION)" ]; then \
-		echo "Error: VERSION is required. Usage: make publish VERSION=1.0.0"; \
+		echo "Error: VERSION is required."; \
 		exit 1; \
 	fi
-	node publish.mjs $(PACKAGE_NAME) $(VERSION)
+	@set -e; \
+	echo "Creating git tag v$(VERSION)..."; \
+	git tag -a "v$(VERSION)" -m "Release v$(VERSION)"; \
+	echo "Pushing tag to remote..."; \
+	git push origin "v$(VERSION)"; \
+	echo "Creating GitHub release..."
+	@set -e; \
+	if command -v gh >/dev/null 2>&1; then \
+		if [ -n "$(NOTES)" ]; then \
+			echo "Using custom release notes: $(NOTES)"; \
+			gh release create "v$(VERSION)" --title "Release v$(VERSION)" --notes "$(NOTES)"; \
+		else \
+			echo "Extracting release notes from README.md..."; \
+			if [ -f "README.md" ]; then \
+				echo "Looking for release notes for version $(VERSION)..."; \
+				awk '/^### v$(VERSION)$$/{flag=1; next} /^### v[0-9]/{flag=0} flag' README.md > /tmp/release_notes.txt; \
+				if [ -s /tmp/release_notes.txt ]; then \
+					echo "Found release notes in README.md:"; \
+					cat /tmp/release_notes.txt; \
+					gh release create "v$(VERSION)" --title "Release v$(VERSION)" --notes-file /tmp/release_notes.txt; \
+				else \
+					echo "No release notes found for v$(VERSION) in README.md, trying without 'v' prefix..."; \
+					awk '/^### $(VERSION)$$/{flag=1; next} /^### [0-9]/{flag=0} flag' README.md > /tmp/release_notes.txt; \
+					if [ -s /tmp/release_notes.txt ]; then \
+						echo "Found release notes in README.md:"; \
+						cat /tmp/release_notes.txt; \
+						gh release create "v$(VERSION)" --title "Release v$(VERSION)" --notes-file /tmp/release_notes.txt; \
+					else \
+						echo "No release notes found for $(VERSION) in README.md, using default notes..."; \
+						gh release create "v$(VERSION)" --title "Release v$(VERSION)" --notes "Release v$(VERSION)"; \
+					fi; \
+				fi; \
+			else \
+				echo "README.md not found, using default notes..."; \
+				gh release create "v$(VERSION)" --title "Release v$(VERSION)" --notes "Release v$(VERSION)"; \
+			fi; \
+			rm -f /tmp/release_notes.txt; \
+		fi; \
+	else \
+		echo "GitHub CLI (gh) not found. Please install it to create GitHub releases."; \
+		echo "Tag v$(VERSION) has been created and pushed to remote."; \
+	fi
+
+# Publish with custom release notes
+.PHONY: release
+release: build
+	@echo "Publishing with release notes..."
+	@set -e; \
+	VERSION=$$(node -p "require('./package.json').version"); \
+	echo "Publishing version $$VERSION..."; \
+	if [ -n "$(NOTES)" ]; then \
+		echo "Using custom release notes: $(NOTES)"; \
+	else \
+		echo "No custom notes provided, will extract from README.md"; \
+	fi; \
+	node publish.mjs $(PACKAGE_NAME) $$VERSION; \
+	echo "Creating git tag and GitHub release..."; \
+	$(MAKE) create-release VERSION=$$VERSION NOTES="$(NOTES)"
 
 # Development mode
 .PHONY: dev
