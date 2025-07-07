@@ -28,15 +28,22 @@ export class MaximAPI {
 		return new Promise((resolve, reject) => {
 			const parsedUrl = new URL(this.baseUrl + relativeUrl);
 			const isLocalhost = parsedUrl.hostname === "localhost";
+
+			const requestHeaders: { [key: string]: string } = {
+				"x-maxim-api-key": this.apiKey,
+				...headers,
+			};
+
+			if (body) {
+				requestHeaders["Content-Length"] = Buffer.byteLength(body, "utf8").toString();
+			}
+
 			const options = {
 				hostname: parsedUrl.hostname,
 				port: isLocalhost ? parsedUrl.port || 3000 : 443,
 				path: parsedUrl.pathname + parsedUrl.search,
 				method: method ?? "GET",
-				headers: {
-					"x-maxim-api-key": this.apiKey,
-					...headers,
-				},
+				headers: requestHeaders,
 				// Use appropriate agent to ensure connections are closed
 				agent: isLocalhost ? this.httpAgent : this.httpsAgent,
 				// Set a timeout to ensure requests don't hang indefinitely

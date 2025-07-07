@@ -28,6 +28,8 @@ export enum Entity {
 	TOOL_CALL = "tool_call",
 	/** Error or exception occurrence */
 	ERROR = "error",
+	/** Storage entity */
+	STORAGE = "storage",
 }
 
 /**

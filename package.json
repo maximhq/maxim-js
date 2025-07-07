@@ -1,7 +1,7 @@
 {
 	"name": "@maximai/maxim-js",
 	"description": "Maxim AI JS SDK. Visit https://getmaxim.ai for more info.",
-	"version": "6.6.0",
+	"version": "6.7.0",
 	"scripts": {
 		"build": "npx tsc -p tsconfig.lib.json && npm run copy-assets && npm run clean-package",
 		"copy-assets": "copyfiles \"README.md\" \"LICENSE\" dist",

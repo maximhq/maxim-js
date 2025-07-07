@@ -469,6 +469,15 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.7.0
+
+- **feat**: Enhanced large log handling with automatic remote storage upload
+  - **NEW FEATURE**: Automatic detection of large logs (>900KB) and direct upload to remote storage instead of SDK endpoint
+  - **PERFORMANCE**: Significantly improved performance when logging large volumes of data by bypassing SDK payload limits
+  - **RELIABILITY**: Added retry mechanism (up to 3 attempts) for failed storage uploads
+  - **TRANSPARENCY**: Debug logging for large log upload operations with size and key information
+  - **AUTOMATIC**: No code changes required - large logs are automatically detected and handled via storage flow
+
 ### v6.6.0
 
 - **feat**: Added Vercel AI SDK integration

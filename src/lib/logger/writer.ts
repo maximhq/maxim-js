@@ -1,6 +1,7 @@
 import fs from "fs";
 import mimeTypes from "mime-types";
 import os from "os";
+import { v4 as uuid } from "uuid";
 import { MaximAttachmentAPI } from "../apis/attachment";
 import { MaximLogsAPI } from "../apis/logs";
 import { MaximCache } from "../cache/cache";
@@ -31,6 +32,7 @@ export class LogWriter {
 	private config: LogWriterConfig;
 	private queue: Queue<CommitLog> = new Queue<CommitLog>();
 	private attachmentQueue: Queue<CommitLog> = new Queue<CommitLog>();
+	private storageQueue: Queue<CommitLog> = new Queue<CommitLog>();
 	private mutex: Mutex = Mutex.get(`maxim-logs-${this.id}`);
 	private readonly isDebug: boolean;
 	private flushInterval: NodeJS.Timeout | null = null;
@@ -40,6 +42,7 @@ export class LogWriter {
 	private readonly maxInMemoryLogs;
 	private readonly cache: MaximCache;
 	private readonly _raiseExceptions: boolean;
+	private readonly STORAGE_LOG_THRESHOLD = 900_000; // ~900KB
 
 	constructor(config: LogWriterConfig & { cache: MaximCache; raiseExceptions: boolean }) {
 		this.config = config;
@@ -53,6 +56,7 @@ export class LogWriter {
 			this.flushInterval = setInterval(
 				() => {
 					this.flush();
+					this.flushStorageLogs();
 					this.flushAttachments();
 				},
 				config.flushInterval ? config.flushInterval * 1000 : 10000,
@@ -320,9 +324,56 @@ export class LogWriter {
 		return null;
 	}
 
+	private async uploadStorageLog(log: CommitLog): Promise<void> {
+		try {
+			if (!log.data || !log.data["logContent"]) {
+				console.error("[MaximSDK] Log content is not set for storage upload. Skipping upload.");
+				return;
+			}
+
+			const logContent = log.data["logContent"] as string;
+			const storageId = uuid();
+
+			const key = `${this.config.repositoryId}/large-logs/${storageId}`;
+
+			const resp = await this.attachmentAPIService.getUploadUrl(key, "text/plain", Buffer.byteLength(logContent, "utf8"));
+
+			await this.attachmentAPIService.uploadToSignedUrl(resp.url, Buffer.from(logContent, "utf8"), "text/plain");
+
+			const storageLog = new CommitLog(Entity.STORAGE, storageId, "process-large-log", { key });
+			this.queue.enqueue(storageLog);
+
+			if (this.isDebug) {
+				console.log(`[MaximSDK] Large log uploaded to storage. Key: ${key}, Size: ${logContent.length} bytes`);
+			}
+		} catch (err) {
+			const currentRetry = "retry" in log.data && typeof log.data["retry"] === "number" ? (log.data["retry"] ?? 0) : 0;
+			if (currentRetry < 3) {
+				(log.data as any)["retry"] = currentRetry + 1;
+				this.storageQueue.enqueue(log);
+			} else {
+				console.error(`[MaximSDK] Failed to upload large log to storage: ${err instanceof Error ? err.message : err}`);
+			}
+		}
+	}
+
+	private async flushStorageLogs() {
+		const storageLogs = this.storageQueue.dequeueAll();
+		if (storageLogs.length === 0) {
+			return;
+		}
+
+		await Promise.all(
+			storageLogs.map(async (log) => {
+				return this.uploadStorageLog(log);
+			}),
+		);
+	}
+
 	public commit(log: CommitLog): void {
 		try {
-			if (this.isDebug) console.log("[MaximSDK] Committing log: ", log.serialize());
+			const serializedLog = log.serialize();
+			if (this.isDebug) console.log("[MaximSDK] Committing log: ", serializedLog);
 			if (!/^[a-zA-Z0-9_-]+$/.test(log.id)) {
 				if (this._raiseExceptions) {
 					throw new Error(
@@ -332,8 +383,13 @@ export class LogWriter {
 				return;
 			}
 
+			// Check if this is a large log that should be uploaded to storage
+			if (Buffer.byteLength(serializedLog, "utf8") > this.STORAGE_LOG_THRESHOLD && log.action !== "upload-attachment") {
+				const storageLog = new CommitLog(log.type, log.id, "upload-storage-log", { logContent: serializedLog });
+				this.storageQueue.enqueue(storageLog);
+			}
 			// Special handling for upload-attachment action
-			if (log.action === "upload-attachment") {
+			else if (log.action === "upload-attachment") {
 				if (!log.data) {
 					console.error("[MaximSDK] Attachment data is not set for log. Skipping upload.");
 					return;
@@ -354,7 +410,7 @@ export class LogWriter {
 				this.queue.enqueue(log);
 			}
 
-			if (this.queue.size + this.attachmentQueue.size > this.maxInMemoryLogs) {
+			if (this.queue.size + this.attachmentQueue.size + this.storageQueue.size > this.maxInMemoryLogs) {
 				this.flush();
 			}
 		} catch (err) {
@@ -385,6 +441,7 @@ export class LogWriter {
 				new Promise<void>(async (resolve) => {
 					await this.mutex.withLock(async () => {
 						try {
+							await this.flushStorageLogs();
 							await this.flushAttachments();
 
 							items = this.queue.dequeueAll();
