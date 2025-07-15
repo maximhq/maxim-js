@@ -3,8 +3,8 @@ import { MaximAPILogCheckAttachEvaluatorsResponse } from "../models/logger";
 import { MaximAPI } from "./maxim";
 
 export class MaximLogsAPI extends MaximAPI {
-	constructor(baseUrl: string, apiKey: string) {
-		super(baseUrl, apiKey);
+	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
+		super(baseUrl, apiKey, isDebug);
 	}
 
 	public async doesLogRepositoryExist(loggerId: string): Promise<boolean> {
@@ -57,10 +57,10 @@ export class MaximLogsAPI extends MaximAPI {
 			this.fetch<MaximAPIResponse>(`/api/sdk/v3/log?id=${repositoryId}`, {
 				method: "POST",
 				headers: {
-					"Content-Type": "application/json",
-					Accept: "application/json",
+					"Content-Type": "text/plain",
 				},
 				body: logs,
+				responseType: "text",
 			})
 				.then((response) => {
 					if (response.error) {

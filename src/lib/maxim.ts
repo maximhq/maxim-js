@@ -208,14 +208,14 @@ export class Maxim {
 		this.baseUrl = config.baseUrl || "https://app.getmaxim.ai";
 		this.apiKey = config.apiKey;
 		this._raiseExceptions = config.raiseExceptions || false;
-		this.APIService = {
-			prompt: new MaximPromptAPI(this.baseUrl, this.apiKey),
-			promptChain: new MaximPromptChainAPI(this.baseUrl, this.apiKey),
-			folder: new MaximFolderAPI(this.baseUrl, this.apiKey),
-			dataset: new MaximDatasetAPI(this.baseUrl, this.apiKey),
-			logs: new MaximLogsAPI(this.baseUrl, this.apiKey),
-		};
 		this.isDebug = config.debug || false;
+		this.APIService = {
+			prompt: new MaximPromptAPI(this.baseUrl, this.apiKey, this.isDebug),
+			promptChain: new MaximPromptChainAPI(this.baseUrl, this.apiKey, this.isDebug),
+			folder: new MaximFolderAPI(this.baseUrl, this.apiKey, this.isDebug),
+			dataset: new MaximDatasetAPI(this.baseUrl, this.apiKey, this.isDebug),
+			logs: new MaximLogsAPI(this.baseUrl, this.apiKey, this.isDebug),
+		};
 		this.cache = config.cache || new MaximInMemoryCache();
 		if (config.promptManagement) {
 			this.isPromptManagementEnabled = true;
@@ -773,10 +773,10 @@ export class Maxim {
 			}
 			await this.sync;
 			const key = this.getCacheKey(EntityType.PROMPT, promptId);
-			
+
 			// check if prompt is present in cache
 			let versionAndRules: PromptVersionsAndRules | null = await this.getPromptFromCache(key);
-			
+
 			// If not present in cache, we make an API call and set in cache
 			if (versionAndRules === null) {
 				versionAndRules = await this.APIService.prompt.getPrompt(promptId);
@@ -1224,7 +1224,14 @@ export class Maxim {
 	 *     ); // .with___(...)
 	 */
 	public createTestRun(name: string, inWorkspaceId: string): TestRunBuilder<undefined> {
-		return createTestRunBuilder({ baseUrl: this.baseUrl, apiKey: this.apiKey, name, workspaceId: inWorkspaceId, evaluators: [] });
+		return createTestRunBuilder({
+			baseUrl: this.baseUrl,
+			apiKey: this.apiKey,
+			name,
+			workspaceId: inWorkspaceId,
+			evaluators: [],
+			isDebug: this.isDebug,
+		});
 	}
 
 	/**

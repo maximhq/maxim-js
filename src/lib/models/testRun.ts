@@ -264,6 +264,7 @@ export type TestRunResult = {
  * Configuration for a test run.
  */
 export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
+	isDebug?: boolean;
 	baseUrl: string;
 	apiKey: string;
 	workspaceId: string;

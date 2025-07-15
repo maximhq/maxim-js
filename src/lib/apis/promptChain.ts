@@ -1,15 +1,15 @@
 import {
+	type AgentResponse,
+	type MaximApiAgentRunResponse,
 	type MaximApiPromptChainResponse,
 	type MaximApiPromptChainsResponse,
 	type PromptChainVersionsAndRules,
-	type MaximApiAgentRunResponse,
-	type AgentResponse,
 } from "../models/promptChain";
 import { MaximAPI } from "./maxim";
 
 export class MaximPromptChainAPI extends MaximAPI {
-	constructor(baseUrl: string, apiKey: string) {
-		super(baseUrl, apiKey);
+	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
+		super(baseUrl, apiKey, isDebug);
 	}
 
 	public async getPromptChain(id: string): Promise<PromptChainVersionsAndRules> {

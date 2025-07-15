@@ -13,11 +13,11 @@ import { DefaultLogger } from "./defaultLogger";
 import { sanitizeDataStructure, validateDataStructure } from "../dataset/dataset";
 import { getAllKeysByValue } from "../utils/utils";
 import {
+	promptChainVersionIdOutputFunctionClosure,
 	promptVersionIdOutputFunctionClosure,
 	runLocalEvaluations,
 	runOutputFunction,
 	workflowIdOutputFunctionClosure,
-	promptChainVersionIdOutputFunctionClosure,
 } from "./runUtils";
 import { sanitizeData, sanitizeEvaluators } from "./sanitizationUtils";
 import { buildErrorMessage, calculatePollingInterval, createStatusTable, getLocalEvaluatorNameToIdAndPassFailCriteriaMap } from "./utils";
@@ -95,7 +95,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 		sanitizeData(config.data, config.dataStructure);
 
 		sanitizeEvaluators(config.evaluators);
-		const APIEvaluatorService = new MaximEvaluatorAPI(config.baseUrl, config.apiKey);
+		const APIEvaluatorService = new MaximEvaluatorAPI(config.baseUrl, config.apiKey, config.isDebug);
 		const platformEvaluatorsConfig = await Promise.all(
 			config.evaluators
 				.filter((e) => typeof e === "string")
@@ -126,7 +126,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 		const failedEntryIndices: number[] = [];
 		const localEvaluatorNameToIdAndPassFailCriteriaMap = getLocalEvaluatorNameToIdAndPassFailCriteriaMap(evaluators);
 
-		const APITestRunService = new MaximTestRunAPI(config.baseUrl, config.apiKey);
+		const APITestRunService = new MaximTestRunAPI(config.baseUrl, config.apiKey, config.isDebug);
 
 		// ===== Common Processor =====
 		async function processEntry(
@@ -227,12 +227,12 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 												prompt_tokens: output.meta.usage.promptTokens,
 												total_tokens: output.meta.usage.totalTokens,
 												latency: output.meta.usage.latency,
-										  }
+											}
 										: {
 												latency: output.meta.usage.latency,
-										  }
+											}
 									: undefined,
-						  }
+							}
 						: undefined,
 					entry: {
 						input,
@@ -244,7 +244,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 							? localEvaluationResults.map((result) => ({
 									...result,
 									id: localEvaluatorNameToIdAndPassFailCriteriaMap.get(result.name)!.id,
-							  }))
+								}))
 							: undefined,
 					},
 				});
@@ -267,12 +267,12 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 					contextToEvaluate: workflow?.contextToEvaluate
 						? workflow.contextToEvaluate
 						: promptVersion?.contextToEvaluate
-						? promptVersion.contextToEvaluate
-						: promptChainVersion?.contextToEvaluate
-						? promptChainVersion.contextToEvaluate
-						: typeof mappingKeys.contextToEvaluate === "string"
-						? mappingKeys.contextToEvaluate
-						: undefined,
+							? promptVersion.contextToEvaluate
+							: promptChainVersion?.contextToEvaluate
+								? promptChainVersion.contextToEvaluate
+								: typeof mappingKeys.contextToEvaluate === "string"
+									? mappingKeys.contextToEvaluate
+									: undefined,
 					dataEntry: row.data,
 				},
 			});
@@ -347,7 +347,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 						const contextToEvaluateKey = getAllKeysByValue(dataStructure, "CONTEXT_TO_EVALUATE")[0];
 
 						if (typeof data === "string") {
-							const APIDatasetService = new MaximDatasetAPI(config.baseUrl, config.apiKey);
+							const APIDatasetService = new MaximDatasetAPI(config.baseUrl, config.apiKey, config.isDebug);
 
 							logger.info(`Fetching dataset "${data}" from platform...`);
 							const platformDataStructure = await APIDatasetService.getDatasetDatastructure(data);
@@ -592,7 +592,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 					} else {
 						// only allow string as data type if no data structure is provided
 						const datasetId = data as string;
-						const APIDatasetService = new MaximDatasetAPI(config.baseUrl, config.apiKey);
+						const APIDatasetService = new MaximDatasetAPI(config.baseUrl, config.apiKey, config.isDebug);
 
 						logger.info(`Fetching dataset "${datasetId}" from platform...`);
 						const dataStructure = await APIDatasetService.getDatasetDatastructure(datasetId);

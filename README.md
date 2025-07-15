@@ -469,6 +469,19 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.8.0
+
+- **feat**: Migrated from native HTTP/HTTPS to Axios with comprehensive retry logic
+  - **BREAKING INTERNAL**: Replaced native Node.js `http`/`https` modules with `axios` and `axios-retry` for all API calls
+  - **RELIABILITY**: Enhanced retry mechanism with exponential backoff (up to 5 attempts) for server errors (5xx) and network issues
+  - **NETWORK RESILIENCE**: Automatic retries for common network errors (ECONNRESET, ETIMEDOUT, ENOTFOUND, etc.)
+  - **SMART RETRY**: Respects `Retry-After` headers and includes jitter to prevent thundering herd problems
+  - **ERROR HANDLING**: Client errors (4xx) are still immediately rejected without retries, preserving API contract
+  - **PERFORMANCE**: Improved connection pooling and keep-alive support for better throughput
+  - **TIMEOUT**: Enhanced timeout management with configurable per-request timeouts
+  - **DEBUGGING**: Better error logging and retry attempt tracking in debug mode
+  - **NEW DEPENDENCIES**: Added `axios` and `axios-retry` as direct dependencies
+
 ### v6.7.0
 
 - **feat**: Enhanced large log handling with automatic remote storage upload
@@ -708,7 +721,7 @@ No action needed for: Regular SDK usage through maxim.logger(), test runs, or pr
 - feat: adds attachments support to Trace, Span, and Generation for file uploads.
 - 3 attachment types are supported: file path, buffer data, and URL has auto-detection of MIME types, file sizes, and names for attachments wherever possible
 - fix: refactored message handling for Generations to prevent keeping messages reference but rather duplicates the object to ensure point in time capture.
-- fix: ensures proper cleanup of resources 
+- fix: ensures proper cleanup of resources
 
 ```js
 Adding attachments

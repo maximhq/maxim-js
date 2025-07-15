@@ -2,8 +2,8 @@ import { type Folder, type MaximFolderResponse, type MaximFoldersResponse } from
 import { MaximAPI } from "./maxim";
 
 export class MaximFolderAPI extends MaximAPI {
-	constructor(baseUrl: string, apiKey: string) {
-		super(baseUrl, apiKey);
+	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
+		super(baseUrl, apiKey, isDebug);
 	}
 
 	public async getFolder(id: string): Promise<Folder> {

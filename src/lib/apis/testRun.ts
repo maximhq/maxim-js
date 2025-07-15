@@ -2,10 +2,10 @@ import { MaximAPIResponse } from "../models/deployment";
 import { HumanEvaluationConfig, MaximAPIEvaluatorFetchResponse } from "../models/evaluator";
 import {
 	MaximAPICreateTestRunResponse,
-	MaximAPITestRunEntryExecutePromptForDataPayload,
-	MaximAPITestRunEntryExecutePromptForDataResponse,
 	MaximAPITestRunEntryExecutePromptChainForDataPayload,
 	MaximAPITestRunEntryExecutePromptChainForDataResponse,
+	MaximAPITestRunEntryExecutePromptForDataPayload,
+	MaximAPITestRunEntryExecutePromptForDataResponse,
 	MaximAPITestRunEntryExecuteWorkflowForDataPayload,
 	MaximAPITestRunEntryExecuteWorkflowForDataResponse,
 	MaximAPITestRunEntryPushPayload,
@@ -17,8 +17,8 @@ import { ExtractAPIDataType } from "../utils/utils";
 import { MaximAPI } from "./maxim";
 
 export class MaximTestRunAPI extends MaximAPI {
-	constructor(baseUrl: string, apiKey: string) {
-		super(baseUrl, apiKey);
+	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
+		super(baseUrl, apiKey, isDebug);
 	}
 
 	public async createTestRun(
