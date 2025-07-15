@@ -79,6 +79,18 @@
 		"./vercel-ai-sdk": {
 			"types": "./vercel-ai-sdk.d.ts",
 			"default": "./vercel-ai-sdk.js"
+		},
+		"./together-ai-sdk": {
+			"types": "./together-ai-sdk.d.ts",
+			"default": "./together-ai-sdk.js"
+		},
+		"./groq-sdk": {
+			"types": "./groq-sdk.d.ts",
+			"default": "./groq-sdk.js"
 		}
+	},
+	"dependencies": {
+		"groq-sdk": "^0.26.0",
+		"together-ai": "^0.19.0"
 	}
 }
