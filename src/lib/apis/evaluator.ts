@@ -3,8 +3,8 @@ import { ExtractAPIDataType } from "../utils/utils";
 import { MaximAPI } from "./maxim";
 
 export class MaximEvaluatorAPI extends MaximAPI {
-	constructor(baseUrl: string, apiKey: string) {
-		super(baseUrl, apiKey);
+	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
+		super(baseUrl, apiKey, isDebug);
 	}
 
 	public async fetchPlatformEvaluator(name: string, inWorkspaceId: string): Promise<ExtractAPIDataType<MaximAPIEvaluatorFetchResponse>> {

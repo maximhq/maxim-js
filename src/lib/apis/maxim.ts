@@ -1,109 +1,235 @@
-import http from "http";
-import https from "https";
+import axios, { AxiosError, AxiosHeaders, AxiosInstance, AxiosRequestConfig, Method } from "axios";
+import axiosRetry from "axios-retry";
+import { Agent as HttpAgent } from "node:http";
+import { Agent as HttpsAgent } from "node:https";
+
+// Network error codes that should trigger retries
+const RETRIABLE_ERROR_CODES = [
+	"ECONNRESET",
+	"ENOTFOUND",
+	"ECONNREFUSED",
+	"ETIMEDOUT",
+	"ECONNABORTED",
+	"EPIPE",
+	"EAI_AGAIN",
+	"EHOSTUNREACH",
+	"ENETUNREACH",
+	"ENETDOWN",
+	"EHOSTDOWN",
+];
+
+// HTTP status codes that indicate temporary server issues
+const RETRIABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504, 507, 508, 510, 511, 520, 521, 522, 523, 524, 525, 526, 527, 529, 530];
 
 export class MaximAPI {
-	private baseUrl: string;
 	private apiKey: string;
-	// Create agents with keepAlive: false to ensure connections are closed
-	private httpAgent = new http.Agent({ keepAlive: false });
-	private httpsAgent = new https.Agent({ keepAlive: false });
+	protected axiosInstance: AxiosInstance;
+	protected isDebug: boolean | undefined;
+	private activeControllers: Set<AbortController> = new Set();
 
-	constructor(baseUrl: string, apiKey: string) {
-		this.baseUrl = baseUrl;
+	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
 		this.apiKey = apiKey;
+		this.isDebug = isDebug;
+
+		// Create axios instance with optimal configuration
+		this.axiosInstance = axios.create({
+			baseURL: baseUrl,
+			timeout: 30000, // 30 second timeout
+			headers: {
+				"User-Agent": "Maxim-SDK/1.0",
+				Accept: "application/json",
+				Connection: "keep-alive",
+			},
+			// Enable connection pooling and keep-alive
+			httpAgent: new HttpAgent({
+				keepAlive: true,
+				keepAliveMsecs: 30000,
+				maxSockets: 100,
+				maxFreeSockets: 10,
+				timeout: 30000,
+			}),
+			httpsAgent: new HttpsAgent({
+				keepAlive: true,
+				keepAliveMsecs: 30000,
+				maxSockets: 100,
+				maxFreeSockets: 10,
+				timeout: 30000,
+			}),
+			// Handle both localhost and production environments
+			validateStatus: (status) => status < 600, // Don't throw on any status code, let us handle it
+		});
+
+		// Configure comprehensive retry logic
+		axiosRetry(this.axiosInstance, {
+			retries: 5, // Maximum retry attempts
+
+			// Exponential backoff with jitter to prevent thundering herd
+			retryDelay: (retryCount, error) => {
+				// Respect Retry-After header if present
+				const retryAfter = error.response?.headers["retry-after"];
+				if (retryAfter && !isNaN(Number.parseInt(retryAfter))) {
+					return Number.parseInt(retryAfter) * 1000;
+				}
+
+				// Exponential backoff: 1s, 2s, 4s, 8s, 16s with jitter
+				const delay = Math.min(Math.pow(2, retryCount) * 1000, 16000);
+				const jitter = Math.random() * 0.1 * delay; // 10% jitter
+				return delay + jitter;
+			},
+
+			// Enhanced retry conditions
+			retryCondition: (error: AxiosError) => {
+				// Network errors (ECONNRESET, EPIPE, etc.)
+				if (error.code && RETRIABLE_ERROR_CODES.includes(error.code)) {
+					return true;
+				}
+
+				// Timeout errors
+				if (error.code === "ECONNABORTED" && error.message?.includes("timeout")) {
+					return true;
+				}
+
+				// No response received (network issues)
+				if (!error.response) {
+					return true;
+				}
+
+				// Server errors and rate limiting
+				if (error.response.status && RETRIABLE_STATUS_CODES.includes(error.response.status)) {
+					return true;
+				}
+
+				// Client errors should not be retried
+				return false;
+			},
+
+			// Reset timeout on each retry attempt
+			shouldResetTimeout: true,
+
+			// Retry callback for logging
+			onRetry: (retryCount, error, requestConfig) => {
+				const errorInfo = {
+					attempt: retryCount,
+					error: error.code || error.message,
+					status: error.response?.status,
+					url: requestConfig.url,
+				};
+				if (this.isDebug) {
+					console.warn(`[Maxim-SDK] Retrying request (attempt ${retryCount}/5):`, errorInfo);
+				}
+			},
+
+			// Max retry time exceeded callback
+			onMaxRetryTimesExceeded: (error, retryCount) => {
+				console.error(`[Maxim-SDK] Max retries (${retryCount}) exceeded for request:`, {
+					error: error.code || error.message,
+					status: error.response?.status,
+					url: error.config?.url,
+				});
+			},
+		});
+
+		// Request interceptor to add API key and handle special cases
+		this.axiosInstance.interceptors.request.use(
+			(config) => {
+				// Ensure headers object exists
+				if (!config.headers) {
+					config.headers = new AxiosHeaders();
+				}
+
+				// Add API key header
+				config.headers["x-maxim-api-key"] = this.apiKey;
+
+				return config;
+			},
+			(error) => {
+				return Promise.reject(error);
+			},
+		);
+
+		// Response interceptor for enhanced error handling
+		this.axiosInstance.interceptors.response.use(
+			(response) => {
+				return response;
+			},
+			(error: unknown) => {
+				if (error && typeof error === "object" && "error" in error) {
+					return Promise.reject(error.error);
+				}
+				return Promise.reject(error);
+			},
+		);
 	}
 
-	protected fetch<T>(
+	protected async fetch<T>(
 		relativeUrl: string,
 		{
-			method,
-			headers,
+			method = "GET",
+			headers = {},
 			body,
+			responseType = "json",
 		}: {
 			method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 			headers?: { [key: string]: string };
 			body?: string;
+			responseType?: "json" | "text";
 		} = {},
 	): Promise<T> {
-		return new Promise((resolve, reject) => {
-			const parsedUrl = new URL(this.baseUrl + relativeUrl);
-			const isLocalhost = parsedUrl.hostname === "localhost";
+		const controller = new AbortController();
+		this.activeControllers.add(controller);
+		const config: AxiosRequestConfig = {
+			url: relativeUrl,
+			method: method.toLowerCase() as Method,
+			headers: { ...headers },
+			responseType: responseType,
+			signal: controller.signal,
+		};
 
-			const requestHeaders: { [key: string]: string } = {
-				"x-maxim-api-key": this.apiKey,
-				...headers,
-			};
+		// Add request body if provided
+		if (body) {
+			config.data = body;
+			// Ensure headers object exists and get reference
+			const configHeaders = config.headers ?? new AxiosHeaders();
+			config.headers = configHeaders;
 
-			if (body) {
-				requestHeaders["Content-Length"] = Buffer.byteLength(body, "utf8").toString();
+			// Set content-type if not already set
+			if (!configHeaders["Content-Type"] && !configHeaders["content-type"]) {
+				configHeaders["Content-Type"] = "application/json";
 			}
+		}
 
-			const options = {
-				hostname: parsedUrl.hostname,
-				port: isLocalhost ? parsedUrl.port || 3000 : 443,
-				path: parsedUrl.pathname + parsedUrl.search,
-				method: method ?? "GET",
-				headers: requestHeaders,
-				// Use appropriate agent to ensure connections are closed
-				agent: isLocalhost ? this.httpAgent : this.httpsAgent,
-				// Set a timeout to ensure requests don't hang indefinitely
-				// timeout: 10000,
-			};
-			const requestModule = isLocalhost ? http : https;
-			const makeRequest = (retryCount = 0) => {
-				const req = requestModule.request(options, (res) => {
-					let data = "";
-					res.on("data", (chunk) => {
-						data += chunk;
-					});
-					res.on("end", () => {
-						try {
-							const response = JSON.parse(data);
-							resolve(response);
-						} catch (error) {
-							if (retryCount < 3) {
-								setTimeout(() => makeRequest(retryCount + 1), 30);
-							} else {
-								reject(error);
-							}
-						}
-					});
-				});
-
-				// Add timeout handling
-				req.on("timeout", () => {
-					req.destroy();
-					if (retryCount < 3) {
-						setTimeout(() => makeRequest(retryCount + 1), 30);
-					} else {
-						reject(new Error("Request timed out"));
-					}
-				});
-
-				req.on("error", (error) => {
-					console.error("Error while connecting to Maxim Server", error);
-					// Make sure to destroy the request to clean up resources
-					req.destroy();
-					if (retryCount < 3) {
-						setTimeout(() => makeRequest(retryCount + 1), 30);
-					} else {
-						reject(error);
-					}
-				});
-				if (body) {
-					req.write(body);
-				}
-				req.end();
-			};
-			makeRequest();
-		});
+		try {
+			const response = await this.axiosInstance.request<T>(config);
+			// For successful responses, return the data
+			if (response.status >= 200 && response.status < 300) {
+				return response.data;
+			}
+			// For non-2xx responses that didn't trigger axios errors
+			if (response.data && typeof response.data === "object" && "error" in response.data) {
+				throw response.data.error;
+			}
+			throw response.data;
+		} finally {
+			this.activeControllers.delete(controller);
+		}
 	}
 
 	/**
 	 * Destroys the HTTP and HTTPS agents, closing all sockets
 	 */
 	public destroyAgents(): void {
-		this.httpAgent.destroy();
-		this.httpsAgent.destroy();
+		// Axios doesn't expose agents directly, but we can ensure all pending requests are cancelled
+		// and connection pools are cleaned up
+		if (this.axiosInstance) {
+			// Abort all active requests
+			for (const controller of this.activeControllers) {
+				controller.abort();
+			}
+			this.activeControllers.clear();
+
+			// Clear interceptors
+			this.axiosInstance.interceptors.request.clear();
+			this.axiosInstance.interceptors.response.clear();
+		}
 	}
 }

@@ -1,16 +1,16 @@
 import {
-	type MaximApiPromptResponse,
-	type MaximApiPromptsResponse,
-	type PromptVersionsAndRules,
-	type MaximApiPromptRunResponse,
-	type PromptResponse,
 	type ImageUrl,
+	type MaximApiPromptResponse,
+	type MaximApiPromptRunResponse,
+	type MaximApiPromptsResponse,
+	type PromptResponse,
+	type PromptVersionsAndRules,
 } from "../models/prompt";
 import { MaximAPI } from "./maxim";
 
 export class MaximPromptAPI extends MaximAPI {
-	constructor(baseUrl: string, apiKey: string) {
-		super(baseUrl, apiKey);
+	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
+		super(baseUrl, apiKey, isDebug);
 	}
 
 	public async getPrompt(id: string): Promise<PromptVersionsAndRules> {

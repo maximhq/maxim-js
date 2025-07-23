@@ -39,7 +39,8 @@ logs/
 .temp/
 
 testConfig.json
-
+testRunTestConfig.json
+test.csv
 
 .env
 .env.beta

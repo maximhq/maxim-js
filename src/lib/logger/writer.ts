@@ -50,8 +50,8 @@ export class LogWriter {
 		this._raiseExceptions = config.raiseExceptions;
 		this.maxInMemoryLogs = config.maxInMemoryLogs || 100;
 		this.cache = config.cache;
-		this.logsAPIService = new MaximLogsAPI(config.baseUrl, config.apiKey);
-		this.attachmentAPIService = new MaximAttachmentAPI(config.baseUrl, config.apiKey);
+		this.logsAPIService = new MaximLogsAPI(config.baseUrl, config.apiKey, config.isDebug);
+		this.attachmentAPIService = new MaximAttachmentAPI(config.baseUrl, config.apiKey, config.isDebug);
 		if (config.autoFlush) {
 			this.flushInterval = setInterval(
 				() => {

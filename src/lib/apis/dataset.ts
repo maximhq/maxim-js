@@ -9,8 +9,8 @@ import { type MaximAPIResponse } from "../models/deployment";
 import { MaximAPI } from "./maxim";
 
 export class MaximDatasetAPI extends MaximAPI {
-	constructor(baseUrl: string, apiKey: string) {
-		super(baseUrl, apiKey);
+	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
+		super(baseUrl, apiKey, isDebug);
 	}
 
 	public async addDatasetEntries(datasetId: string, datasetEntries: DatasetEntry[]): Promise<void> {

@@ -1,3 +1,5 @@
+import "dotenv/config";
+import fs from "node:fs";
 import {
 	createCustomCombinedEvaluatorsFor,
 	createCustomEvaluator,
@@ -9,15 +11,12 @@ import {
 	TestRunLogger,
 	YieldedOutput,
 } from "../../index";
-import "dotenv/config";
-import fs from "node:fs";
+import { MaximEvaluatorAPI } from "./apis/evaluator";
+import { Semaphore } from "./utils/semaphore";
 
 // Load configuration for test environment
-const config = JSON.parse(fs.readFileSync(`${process.cwd()}/libs/maxim-js/testRunTestConfig.json`, "utf-8"));
+const config = JSON.parse(fs.readFileSync(`${process.cwd()}/testRunTestConfig.json`, "utf-8"));
 const env = "prod";
-
-// Environment variables validation
-let apiKey: string, workspaceId: string, workflowId: string, datasetId: string, promptVersionId: string;
 
 if (!config[env].apiKey) throw new Error("Missing API_KEY environment variable");
 if (!config[env].workspaceId) throw new Error("Missing WORKSPACE_ID environment variable");
@@ -25,11 +24,33 @@ if (!config[env].workflowId) throw new Error("Missing WORKFLOW_ID environment va
 if (!config[env].datasetId) throw new Error("Missing DATASET_ID environment variable");
 if (!config[env].promptVersionId) throw new Error("Missing PROMPT_VERSION_ID environment variable");
 
-apiKey = config[env].apiKey;
-workspaceId = config[env].workspaceId;
-workflowId = config[env].workflowId;
-datasetId = config[env].datasetId;
-promptVersionId = config[env].promptVersionId;
+const baseUrl: string = config[env].baseUrl ?? "https://app.getmaxim.ai";
+const apiKey: string = config[env].apiKey;
+const workspaceId: string = config[env].workspaceId;
+const workflowId: string = config[env].workflowId;
+const datasetId: string = config[env].datasetId;
+const promptVersionId: string = config[env].promptVersionId;
+
+// Test case generation data
+const outputProcessors = ["custom output processor", "prompt version", "workflow"] as const;
+const dataSources = ["manual code array", "csv", "data function", "platform dataset"] as const;
+const evaluatorCombinations = [
+	["local evaluator single result return"],
+	["local evaluator multiple result return"],
+	["platform evaluator"],
+	["human evaluator"],
+	["local evaluator single result return", "local evaluator multiple result return"],
+	["local evaluator single result return", "platform evaluator"],
+	["local evaluator single result return", "human evaluator"],
+	["local evaluator multiple result return", "platform evaluator"],
+	["local evaluator multiple result return", "human evaluator"],
+	["platform evaluator", "human evaluator"],
+	["local evaluator single result return", "local evaluator multiple result return", "platform evaluator"],
+	["local evaluator single result return", "local evaluator multiple result return", "human evaluator"],
+	["local evaluator single result return", "platform evaluator", "human evaluator"],
+	["local evaluator multiple result return", "platform evaluator", "human evaluator"],
+	["local evaluator single result return", "local evaluator multiple result return", "platform evaluator", "human evaluator"],
+] as const;
 
 // Common data structure
 const dataStructure = createDataStructure({
@@ -188,7 +209,7 @@ const manualDataFunction = (page: number) => {
 };
 
 // CSV file reference - preserved from original code
-const csvFile = new CSVFile("./tools/maxim-js-test/test.csv", {
+const csvFile = new CSVFile("./test.csv", {
 	Input: 0,
 	"Expected Output": 1,
 	Context: 2,
@@ -219,32 +240,21 @@ class TestLogger implements TestRunLogger<typeof dataStructure> {
 }
 
 // Helper function to create evaluator array - preserved from original code
-function getEvaluators(
-	evaluatorTypes: readonly (
-		| "local evaluator single result return"
-		| "local evaluator multiple result return"
-		| "platform evaluator"
-		| "human evaluator"
-	)[],
-) {
-	return evaluatorTypes.map(
-		(
-			type: "local evaluator single result return" | "local evaluator multiple result return" | "platform evaluator" | "human evaluator",
-		) => {
-			switch (type) {
-				case "local evaluator single result return":
-					return localEvaluatorSingle;
-				case "local evaluator multiple result return":
-					return localCombinedEvaluator;
-				case "platform evaluator":
-					return "containsSpecialCharacters";
-				case "human evaluator":
-					return "Correctness";
-				default:
-					throw new Error(`Unknown evaluator type: ${type}`);
-			}
-		},
-	);
+function getEvaluators(evaluatorTypes: (typeof evaluatorCombinations)[number]) {
+	return evaluatorTypes.map((type) => {
+		switch (type) {
+			case "local evaluator single result return":
+				return localEvaluatorSingle;
+			case "local evaluator multiple result return":
+				return localCombinedEvaluator;
+			case "platform evaluator":
+				return "containsSpecialCharacters";
+			case "human evaluator":
+				return "Correctness";
+			default:
+				throw new Error(`Unknown evaluator type: ${type}`);
+		}
+	});
 }
 
 // Helper function to get data source - preserved from original code
@@ -266,14 +276,9 @@ function getDataSource(dataSourceType: "manual code array" | "csv" | "data funct
 // Helper function to create test run - adapted from original code
 async function createTestRun(
 	maxim: Maxim,
-	outputProcessor: string,
-	dataSource: "manual code array" | "csv" | "data function" | "platform dataset",
-	evaluators: readonly (
-		| "local evaluator single result return"
-		| "local evaluator multiple result return"
-		| "platform evaluator"
-		| "human evaluator"
-	)[],
+	outputProcessor: (typeof outputProcessors)[number],
+	dataSource: (typeof dataSources)[number],
+	evaluators: (typeof evaluatorCombinations)[number],
 ) {
 	const testCase = `${outputProcessor}-${dataSource}-${evaluators.join("-")}`;
 
@@ -311,7 +316,7 @@ async function createTestRun(
 		testRun = testRun.withWorkflowId(workflowId);
 	}
 
-	if (evaluators.includes("human evaluator")) {
+	if (evaluators.some((e) => e === "human evaluator")) {
 		testRun = testRun.withHumanEvaluationConfig({
 			emails: ["dhwanil@getmaxim.ai"],
 			instructions: "Please evaluate the test outputs carefully.",
@@ -322,33 +327,12 @@ async function createTestRun(
 	return result;
 }
 
-// Test case generation data
-const outputProcessors = ["custom output processor", "prompt version", "workflow"] as const;
-const dataSources = ["manual code array", "csv", "data function", "platform dataset"] as const;
-const evaluatorCombinations = [
-	["local evaluator single result return"],
-	["local evaluator multiple result return"],
-	["platform evaluator"],
-	["human evaluator"],
-	["local evaluator single result return", "local evaluator multiple result return"],
-	["local evaluator single result return", "platform evaluator"],
-	["local evaluator single result return", "human evaluator"],
-	["local evaluator multiple result return", "platform evaluator"],
-	["local evaluator multiple result return", "human evaluator"],
-	["platform evaluator", "human evaluator"],
-	["local evaluator single result return", "local evaluator multiple result return", "platform evaluator"],
-	["local evaluator single result return", "local evaluator multiple result return", "human evaluator"],
-	["local evaluator single result return", "platform evaluator", "human evaluator"],
-	["local evaluator multiple result return", "platform evaluator", "human evaluator"],
-	["local evaluator single result return", "local evaluator multiple result return", "platform evaluator", "human evaluator"],
-] as const;
-
 // Generate test cases programmatically
 describe("Maxim TestRun Tester", () => {
 	let maxim: Maxim;
 
 	beforeAll(() => {
-		maxim = new Maxim({ apiKey });
+		maxim = new Maxim({ apiKey, baseUrl });
 	});
 
 	afterAll(async () => {
@@ -360,7 +344,20 @@ describe("Maxim TestRun Tester", () => {
 		"should run all test combinations in parallel",
 		async () => {
 			// Create an array of all test combinations
-			const testCombinations = [];
+			const testCombinations: {
+				processor: (typeof outputProcessors)[number];
+				source: (typeof dataSources)[number];
+				evaluators: (typeof evaluatorCombinations)[number];
+			}[] = [];
+
+			const evaluatorAPI = new MaximEvaluatorAPI(baseUrl, apiKey, true);
+			await evaluatorAPI.fetchPlatformEvaluator("containsSpecialCharacters", workspaceId);
+			await evaluatorAPI.fetchPlatformEvaluator("Correctness", workspaceId);
+
+			// Check if test.csv exists
+			if (!fs.existsSync("./test.csv")) {
+				throw new Error("test.csv file not found in current directory");
+			}
 
 			for (const processor of outputProcessors) {
 				for (const source of dataSources) {
@@ -370,23 +367,31 @@ describe("Maxim TestRun Tester", () => {
 				}
 			}
 
+			const semaphore = new Semaphore("test-run-semaphore", 10);
+
 			// Run all test combinations in parallel using Promise.all
 			const results = await Promise.all(
-				testCombinations.map(({ processor, source, evaluators }) =>
-					createTestRun(maxim, processor, source, evaluators)
-						.then((result) => ({
-							processor,
-							source,
-							evaluators,
-							result,
-						}))
-						.catch((error) => ({
-							processor,
-							source,
-							evaluators,
-							error,
-						})),
-				),
+				testCombinations.map(async ({ processor, source, evaluators }) => {
+					await semaphore.acquire();
+					try {
+						const result = await createTestRun(maxim, processor, source, evaluators)
+							.then((result) => ({
+								processor,
+								source,
+								evaluators,
+								result,
+							}))
+							.catch((error) => ({
+								processor,
+								source,
+								evaluators,
+								error,
+							}));
+						return result;
+					} finally {
+						semaphore.release();
+					}
+				}),
 			);
 
 			const failed: Record<string, string[]> = {};
