@@ -508,6 +508,7 @@ export class Maxim {
 						messages: deployedVersion!.config?.messages,
 						modelParameters: deployedVersion!.config?.modelParameters,
 						model: deployedVersion!.config?.model,
+						deploymentId: deployedVersion!.config?.deploymentId,
 						provider: deployedVersion!.config?.provider,
 						tags: deployedVersion!.config?.tags,
 						run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => {
@@ -538,6 +539,7 @@ export class Maxim {
 							messages: deployedVersion!.config?.messages,
 							modelParameters: deployedVersion!.config?.modelParameters,
 							model: deployedVersion!.config?.model,
+							deploymentId: deployedVersion!.config?.deploymentId,
 							provider: deployedVersion!.config?.provider,
 							tags: deployedVersion!.config?.tags,
 							run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => {
