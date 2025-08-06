@@ -234,6 +234,7 @@ export type Prompt = {
 	messages: (CompletionRequest | ChatCompletionMessage)[];
 	modelParameters: { [key: string]: any };
 	model: string;
+	deploymentId?: string;
 	provider: string;
 	tags: PromptTags;
 	run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => Promise<PromptResponse>;
@@ -249,6 +250,7 @@ export type PromptVersionConfig = {
 	modelParameters: { [key: string]: any };
 	model: string;
 	provider: string;
+	deploymentId?: string;
 	tags?: PromptTagValues;
 };
 

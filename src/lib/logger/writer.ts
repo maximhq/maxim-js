@@ -427,7 +427,7 @@ export class LogWriter {
 			let items: CommitLog[] = [];
 
 			// Add a timeout to the mutex lock to prevent deadlocks
-			const MUTEX_TIMEOUT_MS = 30000; // 30 seconds
+			const MUTEX_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 			// Create a promise that resolves after the timeout
 			const timeoutPromise = new Promise<void>((_, reject) => {

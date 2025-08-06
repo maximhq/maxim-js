@@ -469,6 +469,14 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.9.0
+
+- **feat**: Added `deploymentId` support to prompt configurations
+  - **ENHANCEMENT**: Optional `deploymentId` field now available in `Prompt` and `PromptVersionConfig` types for all prompts with `Azure` provider
+- **improvement**: Extended mutex timeout for log processing from 30 seconds to 2 minutes
+  - **RELIABILITY**: Reduces timeout-related failures during heavy logging operations
+  - **PERFORMANCE**: Better handling of large log batches and concurrent operations
+
 ### v6.8.0
 
 - **feat**: Migrated from native HTTP/HTTPS to Axios with comprehensive retry logic
@@ -510,7 +518,9 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 ### v6.5.0
 
 - **⚠️ BREAKING CHANGES**:
+
   - **`Prompt.messages` type changed**: The `messages` field type has been updated for better type safety
+
     - **Before**: `{ role: string; content: string | CompletionRequestContent[] }[]`
     - **After**: `(CompletionRequest | ChatCompletionMessage)[]`
     - **Migration**: Update your code to use the new `CompletionRequest` interface which has more specific role types (`"user" | "system" | "tool" | "function"`) instead of generic `string`
@@ -626,6 +636,7 @@ entity.addAttachment({
 ```
 
 ### v6.5.0
+
 ⚠️ BREAKING CHANGES:
 
 Prompt.messages type changed: The messages field type has been updated for better type safety
@@ -636,7 +647,7 @@ Migration: Update your code to use the new CompletionRequest interface which has
 
 ```js
 // Before (v6.4.x and earlier)
-const messages: { role: string; content: string }[] = [{ role: "user", content: "Hello" }];
+const messages: { role: string, content: string }[] = [{ role: "user", content: "Hello" }];
 
 // After (v6.5.0+)
 const messages: CompletionRequest[] = [
@@ -713,6 +724,7 @@ No action needed for: Regular SDK usage through maxim.logger(), test runs, or pr
 ⚠️ Note: While these are technically breaking changes at the type level, most existing code will continue to work because CompletionRequest[] is compatible with (CompletionRequest | ChatCompletionMessage)[]. You may only see TypeScript compilation errors if you have strict type checking enabled.
 
 ## v6.4.0
+
 - feat: adds provider field to the Prompt type. This field specifies the LLM provider (e.g., 'openai', 'anthropic', etc.) for the prompt.
 - feat: include Langchain integration in the main repository
 
