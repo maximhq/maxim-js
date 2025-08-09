@@ -1,4 +1,5 @@
 import type { CSVFile } from "../utils/csvParser";
+import type { Attachment } from "../types";
 
 /**
  * Enumeration of supported variable types for dataset entries.
@@ -32,17 +33,43 @@ export enum VariableType {
 	 * @example '{"name": "John", "age": 30}', '[1, 2, 3]', '{"metadata": {...}}'
 	 */
 	JSON = "json",
+
+	/**
+	 * File data type for file attachments.
+	 * @example "file.pdf", "image.png", "audio.mp3"
+	 */
+	FILE = "file",
 }
 
 export type Variable = {
-	type: VariableType;
+	type: VariableType.TEXT;
 	payload: string;
+} | {
+	type: VariableType.JSON;
+	payload: string;
+} | {
+	type: VariableType.FILE;
+	payload: Attachment[];
+};
+
+export type VariableFileAttachment = {
+	id: string;
+	url: string;
+	hosted: boolean;
+	prefix?: string;
+	props: { [key: string]: number | string | boolean };
+};
+
+export type FileVariablePayload = {
+	files: VariableFileAttachment[];
+	entryId: string;
 };
 
 export type DatasetEntry = {
-	input: Variable;
-	context?: Variable;
-	expectedOutput?: Variable;
+	rowNo?: number;
+	columnName: string;
+	cellValue: Variable;
+	columnId?: string;
 };
 
 export type DatasetRow = Record<string, string | string[]>;
@@ -70,6 +97,24 @@ export type MaximAPIDatasetStructureResponse =
 export type MaximAPIDatasetTotalRowsResponse =
 	| {
 			data: number;
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+export type MaximAPIDatasetEntriesResponse =
+	| {
+			data: {
+				ids: string[];
+				cells: {
+					rowNo: number;
+					entryId: string;
+					columnId: string;
+					columnName: string;
+				}[];
+			};
 	  }
 	| {
 			error: {
@@ -141,3 +186,18 @@ export type DataValue<T extends DataStructure | undefined> = T extends DataStruc
 			| CSVFile<Record<keyof T, number>>
 			| ((page: number) => Promise<Data<T>[] | null | undefined> | Data<T>[] | null | undefined)
 	: string;
+
+export type SignedURLResponse = {
+		url: string;
+		key: string;
+	};
+	
+export type DatasetAttachmentUploadResponse = 
+		| {
+			data: SignedURLResponse;
+		}
+		| {
+			error: {
+				message: string;
+			};
+		};

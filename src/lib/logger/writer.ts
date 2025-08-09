@@ -8,13 +8,13 @@ import { MaximCache } from "../cache/cache";
 import { Mutex } from "../utils/mutex";
 import { Queue } from "../utils/queue";
 import { generateUniqueId } from "../utils/utils";
-import {
+import type {
 	Attachment,
+	FileDataAttachmentWithKey,
 	AttachmentWithKey,
 	FileAttachmentWithKey,
-	FileDataAttachmentWithKey,
-	populateAttachmentFields,
-} from "./components/attachment";
+} from "../types";
+import { populateAttachmentFields } from "./components/attachment";
 import { CommitLog, Entity } from "./components/types";
 
 export type LogWriterConfig = {

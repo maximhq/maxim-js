@@ -7,7 +7,7 @@ import { MaximCache } from "./cache/cache";
 import { MaximInMemoryCache } from "./cache/inMemory";
 import { IncomingQuery, QueryObject, findAllMatches, findBestMatch, parseIncomingQuery } from "./filterObjects";
 import { LoggerConfig, MaximLogger } from "./logger/logger";
-import { DatasetEntry } from "./models/dataset";
+import type { DatasetEntry } from "./models/dataset";
 import { RuleGroupType } from "./models/deployment";
 import { Folder } from "./models/folder";
 import { ImageUrl, Prompt, PromptVersionsAndRules } from "./models/prompt";
@@ -1121,7 +1121,8 @@ export class Maxim {
 	 * @example
 	 * await maxim.addDatasetEntries("datasetId", [
 	 * 	{
-	 * 		input: {
+	 * 		columnName: "input",
+	 * 		cellValue: {
 	 * 			type: VariableType.TEXT,
 	 * 			payload: "cell value",
 	 * 		},
