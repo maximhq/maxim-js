@@ -3,7 +3,8 @@ import {
 	type MaximApiPromptResponse,
 	type MaximApiPromptRunResponse,
 	type MaximApiPromptsResponse,
-	type PromptResponse,
+	type CompletionResponse,
+	type ToolResult,
 	type PromptVersionsAndRules,
 } from "../models/prompt";
 import { MaximAPI } from "./maxim";
@@ -49,7 +50,7 @@ export class MaximPromptAPI extends MaximAPI {
 		promptVersionId: string,
 		input: string,
 		options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } },
-	): Promise<PromptResponse> {
+	): Promise<CompletionResponse | ToolResult> {
 		return new Promise((resolve, reject) => {
 			const payload: {
 				type: string;
@@ -80,6 +81,7 @@ export class MaximPromptAPI extends MaximAPI {
 						reject(new Error(response.error.message));
 					} else {
 						const responseData = response.data;
+						if ("choices" in responseData) {
 						resolve({
 							...responseData,
 							usage: {
@@ -89,6 +91,9 @@ export class MaximPromptAPI extends MaximAPI {
 								latency: responseData.usage.latency,
 							},
 						});
+						} else {
+							resolve(responseData);
+						}
 					}
 				})
 				.catch((error) => {

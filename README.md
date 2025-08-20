@@ -469,6 +469,27 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.11.0
+
+- **feat**: Adds tool results as a prompt response type alongside assistant messages
+- **BREAKING CHANGE**: Changed the `PromptResponse` type to `CompletionResponse | ToolResult`
+	- **Before**:
+		- `prompt.run()` would only give assistant messages
+  	- ```typescript
+			const response = prompt.run(...) # response is of `PromptResponse` type
+			console.log(response.choices) # response will have choices directly
+			```		
+	- **After**:
+		- `prompt.run()` gives tool call result as well
+  	- ```typescript
+			const response = prompt.run(...) # response is of `CompletionResponse | ToolResult` type
+			if("choices" in response) {
+				console.log(response.choices) # Here, response is narrowed to `CompletionResponse`
+			} else {
+				console.log(response.content) # Here, response is narrowed to `ToolResult`
+			}
+		  ```
+
 ### v6.10.0
 
 - **feat**: v4 datasets API; flattened POST (rowNo, columnName, type, cellValue) and two-step file upload + PATCH

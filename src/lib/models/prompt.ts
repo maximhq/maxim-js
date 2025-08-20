@@ -86,7 +86,6 @@ export type CompletionRequestContent = CompletionRequestTextContent | Completion
  * different roles (user, system, tool, function) and content types including
  * text and images for vision-enabled models.
  *
- * @interface CompletionRequest
  * @property role - The role of the message sender
  * @property content - Message content as text or multimodal array
  * @property tool_call_id - ID of the tool call this message responds to (for tool/function roles)
@@ -188,7 +187,7 @@ export type Usage = {
  * @property modelParams - Model parameters used for generation
  * @example
  * // Typical prompt response
- * const response: PromptResponse = {
+ * const response: CompletionResponse = {
  *   id: "chatcmpl-123",
  *   provider: "openai",
  *   model: "gpt-4",
@@ -218,14 +217,49 @@ export type Usage = {
  * console.log(`Generated: ${content}`);
  * console.log(`Used ${response.usage.totalTokens} tokens`);
  */
-export type PromptResponse = {
+export type CompletionResponse = {
 	id: string;
 	provider: string;
 	model: string;
 	choices: Choice[];
 	usage: Usage;
 	modelParams: { [key: string]: any };
-};
+}
+
+/**
+ * Represents a tool result in a completion response from an AI model.
+ *
+ * Contains the tool call information including the role, content, and tool call ID.
+ * Used in completion responses where the model calls a tool function.
+ *
+ * @property role - Always "tool" for tool result messages
+ * @property content - The content of the tool call response
+ * @property tool_call_id - ID of the tool call this result corresponds to
+ * @property isError - Optional error information if the tool call failed
+ * @example
+ * // Successful tool call
+ * const toolResult: ToolResult = {
+ *   role: "tool",
+ *   content: '{"status": "success", "data": { "temperature": 72 }}',
+ *   tool_call_id: "call_123",
+ *   isError: false
+ * };
+ *
+ * @example
+ * // Tool call with error
+ * const errorResult: ToolResult = {
+ *   role: "tool",
+ *   content: '{"error": "Invalid input"}',
+ *   tool_call_id: "call_123",
+ *   isError: true
+ * };
+ */
+export type ToolResult = {
+	role: "tool";
+	content: string;
+	tool_call_id: string;
+	isError?: unknown;
+}
 
 export type Prompt = {
 	promptId: string;
@@ -237,7 +271,7 @@ export type Prompt = {
 	deploymentId?: string;
 	provider: string;
 	tags: PromptTags;
-	run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => Promise<PromptResponse>;
+	run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => Promise<CompletionResponse | ToolResult>;
 };
 
 export type PromptTagValues = {
@@ -282,8 +316,10 @@ export type MaximApiPromptsResponse = {
 };
 
 export type MaximApiPromptRunResponse = {
-	data: Omit<PromptResponse, "usage"> & {
+	data:
+	| (Omit<CompletionResponse, "usage"> & {
 		usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; latency: number };
-	};
+	})
+	| ToolResult;
 	error?: { message: string };
 };
