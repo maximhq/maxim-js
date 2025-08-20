@@ -67,7 +67,18 @@ export class MaximPromptChainAPI extends MaximAPI {
 					if (response.error) {
 						reject(new Error(response.error.message));
 					} else {
-						resolve(response.data);
+						const responseData = response.data;
+						resolve({
+							...response.data,
+							meta: {
+								...response.data.meta,
+								usage: {
+									completionTokens: responseData.meta.usage.completion_tokens,
+									promptTokens: responseData.meta.usage.prompt_tokens,
+									totalTokens: responseData.meta.usage.total_tokens,
+								},
+							},
+						});
 					}
 				})
 				.catch((error) => {

@@ -79,7 +79,16 @@ export class MaximPromptAPI extends MaximAPI {
 					if (response.error) {
 						reject(new Error(response.error.message));
 					} else {
-						resolve(response.data);
+						const responseData = response.data;
+						resolve({
+							...responseData,
+							usage: {
+								promptTokens: responseData.usage.prompt_tokens,
+								completionTokens: responseData.usage.completion_tokens,
+								totalTokens: responseData.usage.total_tokens,
+								latency: responseData.usage.latency,
+							},
+						});
 					}
 				})
 				.catch((error) => {
