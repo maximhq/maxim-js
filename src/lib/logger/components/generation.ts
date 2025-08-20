@@ -1,7 +1,7 @@
 import { ChatCompletionMessage, CompletionRequest, CompletionRequestContent } from "../../models/prompt";
 import { uniqueId, utcNow } from "../utils";
 import { LogWriter } from "../writer";
-import { Attachment } from "./attachment";
+import type { Attachment } from "../../types";
 import { EvaluatableBaseContainer } from "./base";
 import { Entity } from "./types";
 

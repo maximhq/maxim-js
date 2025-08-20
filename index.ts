@@ -57,7 +57,8 @@ export type {
 	FileAttachment,
 	FileDataAttachment,
 	UrlAttachment,
-} from "./src/lib/logger/components/attachment";
+} from "./src/lib/types";
+export type { MaximAPIDatasetEntriesResponse } from "./src/lib/models/dataset";
 export type { ChatCompletionChoice, Logprobs, TextCompletionChoice, Usage } from "./src/lib/logger/components/generation";
 export { LogWriter } from "./src/lib/logger/writer";
 export type { LogWriterConfig } from "./src/lib/logger/writer";

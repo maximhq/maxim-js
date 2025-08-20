@@ -1,5 +1,5 @@
 import { LogWriter } from "../writer";
-import { Attachment } from "./attachment";
+import type { Attachment } from "../../types";
 import { EventEmittingBaseContainer } from "./base";
 import { Error, ErrorConfig } from "./error";
 import { Generation, GenerationConfig } from "./generation";

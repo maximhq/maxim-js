@@ -157,10 +157,18 @@ test("get prompts from a folder", async () => {
 test.skip("add dataset entries", async () => {
 	await maxim.addDatasetEntries("clo7as7v2001axvt02rbx70qg", [
 		{
-			input: {
+			columnName: "input",
+			cellValue: {
+				type: VariableType.TEXT,
+				payload: ""
+			}
+		},
+		{
+			columnName: "input",
+			cellValue: {
 				type: VariableType.TEXT,
 				payload: "Hello",
-			},
+			}
 		},
 	]);
 });
@@ -169,7 +177,8 @@ test.skip("add dataset entries should throw error on invalid dataset id", async 
 	try {
 		await maxim.addDatasetEntries("clo7as7v2001axvt02rbx70", [
 			{
-				input: {
+				columnName: "input",
+				cellValue: {
 					type: VariableType.TEXT,
 					payload: "Hello",
 				},
