@@ -282,6 +282,8 @@ export type MaximApiPromptsResponse = {
 };
 
 export type MaximApiPromptRunResponse = {
-	data: PromptResponse;
+	data: Omit<PromptResponse, "usage"> & {
+		usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; latency: number };
+	};
 	error?: { message: string };
 };

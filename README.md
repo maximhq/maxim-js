@@ -469,6 +469,10 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.9.1
+
+- **fix**: Fixed the usage type for `PromptResponse` and `PromptChainResponse` to respond with camel-case instead of snake-case
+
 ### v6.9.0
 
 - **feat**: Added `deploymentId` support to prompt configurations

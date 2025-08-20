@@ -1,5 +1,5 @@
-import { Prompt } from "./prompt";
 import { DeploymentVersionDeploymentConfig } from "./deployment";
+import { Prompt } from "./prompt";
 
 export type AgentCost = {
 	input: number;
@@ -83,6 +83,10 @@ export type MaximApiPromptChainsResponse = {
 };
 
 export type MaximApiAgentRunResponse = {
-	data: AgentResponse;
+	data: Omit<AgentResponse, "meta"> & {
+		meta: Omit<AgentResponseMeta, "usage"> & {
+			usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+		};
+	};
 	error?: { message: string };
 };
