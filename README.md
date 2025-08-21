@@ -469,6 +469,11 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.11.0
+
+- **feat**: Adds tool call results support for prompt responses
+- **feat**: Adds `toolCallResults` to `PromptResponse` type and a `ToolCallResults` type
+
 ### v6.10.0
 
 - **feat**: v4 datasets API; flattened POST (rowNo, columnName, type, cellValue) and two-step file upload + PATCH

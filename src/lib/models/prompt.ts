@@ -4,6 +4,8 @@ export type PromptTags = {
 	[key: string]: string | number | boolean | undefined;
 };
 
+export type ToolCallType = "PROGRAM" | "API" | "SCHEMA";
+
 export interface ToolCallFunction {
 	arguments: string;
 	name: string;
@@ -173,6 +175,14 @@ export type Usage = {
 	latency: number;
 };
 
+export type ToolCallResult = {
+	name: string;
+	result: unknown;
+	type: ToolCallType;
+	id: string;
+	isError?: unknown;
+};
+
 /**
  * Complete response object from a prompt execution.
  *
@@ -186,6 +196,7 @@ export type Usage = {
  * @property choices - Array of generated response choices
  * @property usage - Token usage and latency information
  * @property modelParams - Model parameters used for generation
+ * @property toolCallResults - Tool call results from the prompt execution (optional)
  * @example
  * // Typical prompt response
  * const response: PromptResponse = {
@@ -209,6 +220,12 @@ export type Usage = {
  *   modelParams: {
  *     temperature: 0.7,
  *     max_tokens: 1000
+ *   },
+ *   toolCallResults: {
+ *     version: 2,
+ *     results: [
+ *       { name: "get_weather", result: "sunny", type: "API", id: "call_123" }
+ *     ]
  *   }
  * };
  *
@@ -217,6 +234,11 @@ export type Usage = {
  * const content = response.choices[0].message.content;
  * console.log(`Generated: ${content}`);
  * console.log(`Used ${response.usage.totalTokens} tokens`);
+ * 
+ * @example
+ * // Using the tool call results
+ * const toolCallResult = response.toolCallResults?.results[0];
+ * console.log(`Tool call result: ${toolCallResult?.result}`);
  */
 export type PromptResponse = {
 	id: string;
@@ -225,6 +247,7 @@ export type PromptResponse = {
 	choices: Choice[];
 	usage: Usage;
 	modelParams: { [key: string]: any };
+	toolCallResults?: Array<ToolCallResult>;
 };
 
 export type Prompt = {
@@ -282,8 +305,12 @@ export type MaximApiPromptsResponse = {
 };
 
 export type MaximApiPromptRunResponse = {
-	data: Omit<PromptResponse, "usage"> & {
+	data: Omit<PromptResponse, "usage" | "toolCallResults"> & {
 		usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; latency: number };
+		toolCallResults?: {
+			version: number;
+			results: Array<ToolCallResult>;
+		};
 	};
 	error?: { message: string };
 };
