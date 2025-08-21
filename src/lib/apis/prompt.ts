@@ -82,6 +82,7 @@ export class MaximPromptAPI extends MaximAPI {
 						const responseData = response.data;
 						resolve({
 							...responseData,
+							toolCallResults: responseData.toolCallResults ? responseData.toolCallResults.results : undefined,
 							usage: {
 								promptTokens: responseData.usage.prompt_tokens,
 								completionTokens: responseData.usage.completion_tokens,
