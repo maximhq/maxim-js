@@ -1,4 +1,3 @@
-import { utcNow } from "../utils";
 import { LogWriter } from "../writer";
 import { BaseContainer } from "./base";
 import { Entity } from "./types";
@@ -108,9 +107,7 @@ export class ToolCall extends BaseContainer {
 	 */
 	public static result_(writer: LogWriter, id: string, result: string): void {
 		BaseContainer.commit_(writer, Entity.TOOL_CALL, id, "result", { result });
-		BaseContainer.end_(writer, Entity.TOOL_CALL, id, {
-			endTimestamp: utcNow(),
-		});
+		BaseContainer.end_(writer, Entity.TOOL_CALL, id);
 	}
 
 	/**
@@ -140,9 +137,7 @@ export class ToolCall extends BaseContainer {
 	 */
 	public static error_(writer: LogWriter, id: string, error: ToolCallError): void {
 		BaseContainer.commit_(writer, Entity.TOOL_CALL, id, "error", { error });
-		BaseContainer.end_(writer, Entity.TOOL_CALL, id, {
-			endTimestamp: utcNow(),
-		});
+		BaseContainer.end_(writer, Entity.TOOL_CALL, id);
 	}
 
 	/**
