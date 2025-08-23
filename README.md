@@ -469,6 +469,10 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.12.0
+
+- **fix**: Fixes start and end timestamps for log entities
+
 ### v6.11.0
 
 - **feat**: Adds tool call results support for prompt responses

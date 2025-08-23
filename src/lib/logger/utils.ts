@@ -1,7 +1,3 @@
-export function utcNow(): Date {
-	return new Date(new Date().toUTCString());
-}
-
 export function uniqueId(): string {
 	return crypto.randomUUID();
 }

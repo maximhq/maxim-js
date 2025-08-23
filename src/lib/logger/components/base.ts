@@ -1,5 +1,5 @@
 import { v4 as uuid } from "uuid";
-import { makeObjectSerializable, uniqueId, utcNow } from "../utils";
+import { makeObjectSerializable, uniqueId } from "../utils";
 import { LogWriter } from "../writer";
 import { CommitLog, Entity } from "./types";
 
@@ -67,7 +67,7 @@ export abstract class BaseContainer {
 		}
 		this._name = config.name;
 		this.spanId = config.spanId;
-		this.startTimestamp = utcNow();
+		this.startTimestamp = new Date();
 		this.tags = config.tags || {};
 		this.writer = writer;
 	}
@@ -161,7 +161,7 @@ export abstract class BaseContainer {
 	 * container.end();
 	 */
 	public end() {
-		this.endTimestamp = utcNow();
+		this.endTimestamp = new Date();
 		this.commit("end", { endTimestamp: this.endTimestamp });
 	}
 
@@ -176,9 +176,9 @@ export abstract class BaseContainer {
 	 */
 	public static end_(writer: LogWriter, entity: Entity, id: string, data?: any) {
 		if (!data) {
-			data = { endTimestamp: utcNow() };
+			data = { endTimestamp: new Date() };
 		} else if (!data.endTimestamp) {
-			data.endTimestamp = utcNow();
+			data.endTimestamp = new Date();
 		}
 		BaseContainer.commit_(writer, entity, id, "end", data);
 	}
@@ -297,10 +297,10 @@ export abstract class EventEmittingBaseContainer extends EvaluatableBaseContaine
 				},
 				{} as Record<string, string>,
 			);
-			this.commit("add-event", { id: id, name, timestamp: utcNow(), tags, metadata: sanitizedMetadata });
+			this.commit("add-event", { id: id, name, timestamp: new Date(), tags, metadata: sanitizedMetadata });
 			return;
 		}
-		this.commit("add-event", { id: id, name, timestamp: utcNow(), tags });
+		this.commit("add-event", { id: id, name, timestamp: new Date(), tags });
 	}
 
 	/**
@@ -332,10 +332,10 @@ export abstract class EventEmittingBaseContainer extends EvaluatableBaseContaine
 				},
 				{} as Record<string, string>,
 			);
-			BaseContainer.commit_(writer, entity, id, "add-event", { id: eventId, name, timestamp: utcNow(), tags, metadata: sanitizedMetadata });
+			BaseContainer.commit_(writer, entity, id, "add-event", { id: eventId, name, timestamp: new Date(), tags, metadata: sanitizedMetadata });
 			return;
 		}
-		BaseContainer.commit_(writer, entity, id, "add-event", { id: eventId, name, timestamp: utcNow(), tags });
+		BaseContainer.commit_(writer, entity, id, "add-event", { id: eventId, name, timestamp: new Date(), tags });
 	}
 }
 
@@ -412,7 +412,7 @@ export class EvaluateContainer {
 				with: "variables",
 				variables,
 				evaluators: Array.from(new Set(forEvaluators)),
-				timestamp: utcNow(),
+				timestamp: new Date(),
 			}),
 		);
 	}
@@ -451,7 +451,7 @@ export class EvaluateContainer {
 			new CommitLog(this._entity, this._id, "evaluate", {
 				with: "evaluators",
 				evaluators: uniqueEvaluators,
-				timestamp: utcNow(),
+				timestamp: new Date(),
 			}),
 		);
 

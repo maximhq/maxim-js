@@ -1,5 +1,5 @@
 import { ChatCompletionMessage, CompletionRequest, CompletionRequestContent } from "../../models/prompt";
-import { uniqueId, utcNow } from "../utils";
+import { uniqueId } from "../utils";
 import { LogWriter } from "../writer";
 import type { Attachment } from "../../types";
 import { EvaluatableBaseContainer } from "./base";
@@ -300,7 +300,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 */
 	public static result_(writer: LogWriter, id: string, result: TextCompletionResult | ChatCompletionResult) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "result", { result });
-		EvaluatableBaseContainer.end_(writer, Entity.GENERATION, id, { endTimestamp: utcNow() });
+		EvaluatableBaseContainer.end_(writer, Entity.GENERATION, id);
 	}
 
 	/**
@@ -330,7 +330,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 */
 	public static error_(writer: LogWriter, id: string, error: GenerationError) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "result", { result: { error: error, id: uniqueId() } });
-		EvaluatableBaseContainer.end_(writer, Entity.GENERATION, id, { endTimestamp: utcNow() });
+		EvaluatableBaseContainer.end_(writer, Entity.GENERATION, id);
 	}
 
 	/**

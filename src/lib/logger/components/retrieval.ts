@@ -1,4 +1,3 @@
-import { utcNow } from "../utils";
 import { LogWriter } from "../writer";
 import { EvaluatableBaseContainer } from "./base";
 import { Entity } from "./types";
@@ -99,7 +98,8 @@ export class Retrieval extends EvaluatableBaseContainer {
 		if (typeof docs === "string") {
 			finalDocs = [docs];
 		}
-		this.commit("end", { docs: finalDocs, endTimestamp: utcNow() });
+		this.commit("end", { docs: finalDocs, endTimestamp: new Date() });
+		this.end();
 	}
 
 	/**
@@ -115,6 +115,6 @@ export class Retrieval extends EvaluatableBaseContainer {
 		if (typeof docs === "string") {
 			finalDocs = [docs];
 		}
-		EvaluatableBaseContainer.commit_(writer, Entity.RETRIEVAL, id, "end", { docs: finalDocs, endTimestamp: utcNow() });
+		EvaluatableBaseContainer.commit_(writer, Entity.RETRIEVAL, id, "end", { docs: finalDocs, endTimestamp: new Date() });
 	}
 }
