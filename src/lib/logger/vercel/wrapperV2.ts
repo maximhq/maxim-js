@@ -1,54 +1,17 @@
-import type { LanguageModelV1, LanguageModelV1CallOptions, LanguageModelV1StreamPart } from "ai-sdk-provider-v1";
-import type { LanguageModelV2 } from "ai-sdk-provider-v2";
+import type { LanguageModelV2, LanguageModelV2CallOptions, LanguageModelV2StreamPart } from "ai-sdk-provider-v2";
 import { MaximLogger } from "../logger";
-import { v4 as uuid } from "uuid";
 import {
-	convertDoGenerateResultToChatCompletionResult,
+	convertDoGenerateResultToChatCompletionResultV2,
 	determineProvider,
 	extractMaximMetadataFromOptions,
 	extractModelParameters,
-	parsePromptMessages,
-	processStream,
+	parsePromptMessagesV2,
+	processStreamV2,
 } from "./utils";
 import { Generation, Session } from "../components";
-import { MaximAISDKWrapperV2 } from "./wrapperV2";
+import { v4 as uuid } from "uuid";
 
-/**
- * Wraps a Vercel AI SDK language model with Maxim logging and tracing capabilities.
- *
- * This function checks if the provided model implements the v1 specification, and if so,
- * returns a wrapped version that integrates Maxim's observability features. If the model
- * is not supported, it logs an error and returns the original model.
- *
- * @template T - The type of the language model (must extend LanguageModelV1).
- * @param model - The Vercel AI SDK language model instance to wrap.
- * @param logger - The MaximLogger instance to use for tracing and logging.
- * @returns The wrapped model with Maxim integration, or the original model if unsupported.
- */
-export function wrapMaximAISDKModel<T extends LanguageModelV1 | LanguageModelV2>(model: T, logger: MaximLogger): T {
-	if (model?.specificationVersion === "v1") {
-		return new MaximAISDKWrapper(model, logger) as unknown as T;
-	}
-	if (model?.specificationVersion === "v2") {
-		return new MaximAISDKWrapperV2(model, logger) as unknown as T;
-	}
-	console.error("[MaximSDK] Unsupported model");
-	return model;
-}
-
-/**
- * A wrapper class that adds Maxim logging and tracing to a Vercel AI SDK language model.
- *
- * This class decorates a LanguageModelV1 instance, intercepting calls to provide
- * advanced observability, tracing, and logging via the MaximLogger. It is intended
- * for internal use by the wrapMaximAISDKModel function.
- *
- * @class
- * @template T - The type of the language model (must extend LanguageModelV1).
- * @param model - The Vercel AI SDK language model instance to wrap.
- * @param logger - The MaximLogger instance to use for tracing and logging.
- */
-class MaximAISDKWrapper implements LanguageModelV1 {
+export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 	/**
 	 * @constructor
 	 * Creates a new MaximAISDKWrapper instance.
@@ -57,7 +20,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 * @param logger - The MaximLogger instance to use for tracing and logging.
 	 */
 	constructor(
-		private model: LanguageModelV1,
+		private model: LanguageModelV2,
 		private logger: MaximLogger,
 	) {}
 
@@ -71,12 +34,12 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 * @param options - The call options for the model invocation.
 	 * @returns An object containing maximMetadata, trace, session, span, and promptMessages.
 	 */
-	private setupLogging(options: LanguageModelV1CallOptions) {
+	private setupLogging(options: LanguageModelV2CallOptions) {
 		// Extracting the maxim object from `providerOptions`
-		const maximMetadata = extractMaximMetadataFromOptions(options.providerMetadata);
+		const maximMetadata = extractMaximMetadataFromOptions(options.providerOptions);
 
 		// Parsing the ai-sdk prompt messages to maxim prompt messages
-		const promptMessages = parsePromptMessages(options.prompt);
+		const promptMessages = parsePromptMessagesV2(options.prompt);
 		let session: Session | undefined = undefined;
 
 		// If sessionId is passed, then create a session on Maxim. If not passed, do not create a session
@@ -109,6 +72,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 
 		const userMessage = promptMessages.find((msg) => msg.role === "user");
 		const userInput = userMessage?.content;
+
 		if (userInput) {
 			if (typeof userInput === "string") {
 				trace.input(userInput);
@@ -139,7 +103,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 * @param options - The call options for the model invocation.
 	 * @returns The result of the underlying model's doGenerate call.
 	 */
-	async doGenerate(options: LanguageModelV1CallOptions) {
+	async doGenerate(options: LanguageModelV2CallOptions) {
 		const { maximMetadata, trace, span, promptMessages } = this.setupLogging(options);
 		let generation: Generation | undefined = undefined;
 
@@ -157,7 +121,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 			// Calling the original doGenerate function
 			const response = await this.model.doGenerate(options);
 
-			const res = convertDoGenerateResultToChatCompletionResult(response);
+			const res = convertDoGenerateResultToChatCompletionResultV2(response);
 			generation.result(res);
 			generation.end();
 
@@ -189,7 +153,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 * @param options - The call options for the model invocation.
 	 * @returns The result of the underlying model's doStream call, with a wrapped stream.
 	 */
-	async doStream(options: LanguageModelV1CallOptions) {
+	async doStream(options: LanguageModelV2CallOptions) {
 		const { maximMetadata, trace, span, promptMessages } = this.setupLogging(options);
 		let generation: Generation | undefined = undefined;
 
@@ -209,8 +173,8 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 			});
 
 			// going through the original stream to collect chunks and pass them without modifications to the stream
-			const chunks: LanguageModelV1StreamPart[] = [];
-			const stream = new ReadableStream<LanguageModelV1StreamPart>({
+			const chunks: LanguageModelV2StreamPart[] = [];
+			const stream = new ReadableStream<LanguageModelV2StreamPart>({
 				async start(controller) {
 					try {
 						const reader = response.stream.getReader();
@@ -221,7 +185,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 							if (done) {
 								// Stream is done, now process before closing
 								try {
-									if (generation) processStream(chunks, span, trace, generation, modelId, maximMetadata);
+									if (generation) processStreamV2(chunks, span, trace, generation, modelId, maximMetadata);
 								} catch (error) {
 									console.error("[MaximSDK] Processing failed:", error);
 									if (generation) {
@@ -277,15 +241,6 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	}
 
 	/**
-	 * Returns the default object generation mode of the wrapped model.
-	 *
-	 * @returns The default object generation mode.
-	 */
-	get defaultObjectGenerationMode() {
-		return this.model.defaultObjectGenerationMode;
-	}
-
-	/**
 	 * Returns the model ID of the wrapped model.
 	 *
 	 * @returns The model ID.
@@ -313,29 +268,11 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	}
 
 	/**
-	 * Indicates whether the wrapped model supports image URLs.
+	 * Supported URL patterns by media type for the provider.
 	 *
-	 * @returns True if image URLs are supported, false otherwise.
+	 * @returns A map of supported URL patterns by media type (as a promise or a plain object).
 	 */
-	get supportsImageUrls() {
-		return this.model.supportsImageUrls;
-	}
-
-	/**
-	 * Indicates whether the wrapped model supports structured outputs.
-	 *
-	 * @returns True if structured outputs are supported, false otherwise.
-	 */
-	get supportsStructuredOutputs() {
-		return this.model.supportsStructuredOutputs;
-	}
-
-	/**
-	 * Indicates whether the wrapped model supports URL input.
-	 *
-	 * @returns True if URL input is supported, false otherwise.
-	 */
-	get supportsUrl() {
-		return this.model.supportsUrl;
+	get supportedUrls() {
+		return this.model.supportedUrls;
 	}
 }

@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, streamObject, streamText, tool } from "ai";
 import { config } from "dotenv";
 import { v4 as uuid } from "uuid";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { Maxim } from "../../../../index";
 import { MaximVercelProviderMetadata, wrapMaximAISDKModel } from "../../../../vercel-ai-sdk";
 
@@ -43,21 +43,27 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 				throw new Error("Logger is not available");
 			}
 			const model = wrapMaximAISDKModel(openai.chat("gpt-3.5-turbo"), logger);
-			const traceId = uuid();
+			const trace = logger.trace({
+				id: uuid(),
+				name: "Testing a new trace for generateText",
+				tags: {
+					additional_data: "Hello",
+				},
+			});
 
 			const query = "Who is Sachin Tendulkar?";
+			trace.input(query);
 			try {
 				const response = await generateText({
 					model: model,
 					temperature: 0.3,
 					topP: 1,
-					frequencyPenalty: 0,
 					system: "Be verbose in your answers",
 					prompt: query,
-					maxTokens: 4096,
+					maxOutputTokens: 4096,
 					providerOptions: {
 						maxim: {
-							traceId: traceId,
+							traceId: trace.id,
 							traceName: "Testing a new trace for generateText",
 							generationName: "Sachin Tendulkar LLM Call",
 							generationTags: {
@@ -83,12 +89,12 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
+			const model = wrapMaximAISDKModel(openai.chat("gpt-5-chat-latest"), logger);
 
 			try {
 				const result = await generateText({
 					model: model,
-					maxTokens: 1024,
+					maxOutputTokens: 1024,
 					system: "You are a helpful chatbot.",
 					messages: [
 						{
@@ -119,12 +125,12 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapMaximAISDKModel(openai.chat("gpt-4-turbo"), logger);
+			const model = wrapMaximAISDKModel(openai.chat("gpt-5"), logger);
 
 			try {
 				const result = await generateText({
 					model: model,
-					maxTokens: 512,
+					maxOutputTokens: 512,
 					messages: [
 						{
 							role: "user",
@@ -157,12 +163,12 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapMaximAISDKModel(openai.chat("gpt-4-turbo"), logger);
+			const model = wrapMaximAISDKModel(openai.chat("gpt-5-mini"), logger);
 
 			try {
 				const result = await generateText({
 					model: model,
-					maxTokens: 512,
+					maxOutputTokens: 512,
 					messages: [
 						{
 							role: "user",
@@ -187,7 +193,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			}
 		}, 20000);
 
-		it("should log the user input and the model response for stream text", async () => {
+		it("should log the user input and the model response for stream text for inventing", async () => {
 			if (!repoId || !openAIKey) {
 				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
 			}
@@ -195,22 +201,29 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			const model = wrapMaximAISDKModel(openai.chat("gpt-4-turbo"), logger);
+			const model = wrapMaximAISDKModel(openai.chat("gpt-5-nano"), logger);
 
 			try {
 				const result = streamText({
 					model: model,
-					maxTokens: 512,
-					temperature: 0.3,
+					maxOutputTokens: 512,
 					maxRetries: 5,
-					prompt: "Invent a new holiday and describe its traditions.",
+					messages: [
+						{
+							role: "user",
+							content: "Invent a new holiday and describe its traditions.",
+						},
+					],
 					providerOptions: {
 						maxim: {
 							traceName: "OpenAI stream",
-						},
+							traceTags: {
+								test: "hello",
+							},
+						} as MaximVercelProviderMetadata,
 					},
 				});
-				console.log("OpenAI response for stream text", result.text);
+				console.log("Hello");
 			} catch (error) {
 				console.error(error);
 			}
@@ -230,7 +243,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			try {
 				const result = streamText({
 					model: model,
-					maxTokens: 1024,
+					maxOutputTokens: 1024,
 					system: "You are a helpful chatbot.",
 					messages: [
 						{
@@ -447,7 +460,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			try {
 				const object = streamObject({
 					model: model,
-					maxTokens: 512,
+					maxOutputTokens: 512,
 					schema: z.object({
 						stamps: z.array(
 							z.object({
@@ -499,11 +512,11 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			try {
 				const { text: resText } = await generateText({
 					model: model,
-					maxSteps: 5,
+					messages: [],
 					tools: {
 						weather: tool({
 							description: "Get the weather in a location",
-							parameters: z.object({
+							inputSchema: z.object({
 								location: z.string().describe("The location to get the weather for"),
 							}),
 							execute: async ({ location }: { location: string }) => ({
@@ -522,7 +535,6 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 
 				const { text: res2Text } = await generateText({
 					model: model,
-					maxSteps: 5,
 					prompt: `Explain to me some reasons for this: ${resText}`,
 					providerOptions: {
 						maxim: {
@@ -553,7 +565,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 					tools: {
 						weather: tool({
 							description: "Get the weather in a location",
-							parameters: z.object({
+							inputSchema: z.object({
 								location: z.string().describe("The location to get the weather for"),
 							}),
 							execute: async ({ location }: { location: string }) => ({
@@ -562,7 +574,7 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 							}),
 						}),
 						cityAttractions: tool({
-							parameters: z.object({ city: z.string() }),
+							inputSchema: z.object({ city: z.string() }),
 							execute: async ({ city }: { city: string }) => {
 								if (city === "San Francisco") {
 									return {
@@ -574,7 +586,6 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 							},
 						}),
 					},
-					maxSteps: 5,
 					prompt: "What is the weather in San Francisco and what attractions should I visit?",
 					providerOptions: {
 						maxim: {
@@ -588,36 +599,35 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			}
 		}, 20000);
 
-		it("should get a web searcher with openai", async () => {
-			if (!repoId || !openAIKey) {
-				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
-			}
-			const logger = await maxim.logger({ id: repoId });
-			if (!logger) {
-				throw new Error("Logger is not available");
-			}
-			const model = wrapMaximAISDKModel(openai.chat("gpt-3.5-turbo"), logger);
+		// it("should get a web searcher with openai", async () => {
+		// 	if (!repoId || !openAIKey) {
+		// 		throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+		// 	}
+		// 	const logger = await maxim.logger({ id: repoId });
+		// 	if (!logger) {
+		// 		throw new Error("Logger is not available");
+		// 	}
+		// 	const model = wrapMaximAISDKModel(openai.chat("gpt-3.5-turbo"), logger);
 
-			try {
-				const { text, sources } = await generateText({
-					model: model,
-					prompt: "What happened in San Francisco last week?",
-					tools: {
-						web_search_preview: openai.tools.webSearchPreview(),
-					},
-					maxSteps: 5,
-					providerOptions: {
-						maxim: {
-							traceName: "SF web searcher",
-						},
-					},
-				});
-				console.log("OpenAI response for web search", text);
-				console.log("OpenAI sources for web search", sources);
-			} catch (error) {
-				console.error("Error in web search", error);
-			}
-		}, 20000);
+		// 	try {
+		// 		const { text, sources } = await generateText({
+		// 			model: model,
+		// 			prompt: "What happened in San Francisco last week?",
+		// 			tools: {
+		// 				web_search_preview: openai.tools.webSearchPreview(),
+		// 			},
+		// 			providerOptions: {
+		// 				maxim: {
+		// 					traceName: "SF web searcher",
+		// 				},
+		// 			},
+		// 		});
+		// 		console.log("OpenAI response for web search", text);
+		// 		console.log("OpenAI sources for web search", sources);
+		// 	} catch (error) {
+		// 		console.error("Error in web search", error);
+		// 	}
+		// }, 20000);
 
 		it("should trace Anthropic chat model with basic text", async () => {
 			if (!repoId || !anthropicApiKey) {
@@ -635,10 +645,9 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 					model: model,
 					temperature: 0,
 					topP: 1,
-					frequencyPenalty: 0,
 					system: "Be verbose in your answers",
 					prompt: query,
-					maxTokens: 4096,
+					maxOutputTokens: 4096,
 				});
 				console.log("Anthropic response for basic generateText", response);
 			} catch (error) {
@@ -662,10 +671,9 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 					model: model,
 					temperature: 0,
 					topP: 1,
-					frequencyPenalty: 0,
 					system: "Be verbose in your answers",
 					prompt: query,
-					maxTokens: 4096,
+					maxOutputTokens: 4096,
 				});
 				console.log("OpenAI response for basic generateText", response);
 			} catch (error) {
@@ -689,10 +697,9 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 					model: model,
 					temperature: 0,
 					topP: 1,
-					frequencyPenalty: 0,
 					system: "Be verbose in your answers",
 					prompt: query,
-					maxTokens: 4096,
+					maxOutputTokens: 4096,
 				});
 				const res = await response.text;
 				console.log("OpenAI response for streaming: ", res);

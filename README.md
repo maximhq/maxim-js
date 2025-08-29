@@ -469,6 +469,10 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.13.0
+
+- **feat**: Added `AI SDK v5` support. Keeps `AI SDK v4` support intact
+
 ### v6.12.0
 
 - **fix**: Fixes start and end timestamps for log entities

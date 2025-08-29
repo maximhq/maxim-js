@@ -2,11 +2,36 @@ import {
 	LanguageModelV1CallOptions,
 	LanguageModelV1FunctionToolCall,
 	LanguageModelV1Prompt,
+	LanguageModelV1ProviderMetadata,
 	LanguageModelV1StreamPart,
-} from "@ai-sdk/provider";
+} from "ai-sdk-provider-v1";
 import { v4 as uuid } from "uuid";
-import { ChatCompletionMessage, ChatCompletionResult, CompletionRequest, Generation, Span, Trace } from "../../../../index";
+import {
+	ChatCompletionChoice,
+	ChatCompletionMessage,
+	ChatCompletionResult,
+	CompletionRequest,
+	Generation,
+	Span,
+	Trace,
+} from "../../../../index";
 import { CompletionRequestContent } from "../../models/prompt";
+import {
+	LanguageModelV2CallOptions,
+	LanguageModelV2CallWarning,
+	LanguageModelV2Content,
+	LanguageModelV2FinishReason,
+	LanguageModelV2Prompt,
+	LanguageModelV2ResponseMetadata,
+	LanguageModelV2StreamPart,
+	LanguageModelV2ToolCall,
+	LanguageModelV2ToolResultOutput,
+	LanguageModelV2Usage,
+	SharedV2Headers,
+	SharedV2ProviderMetadata,
+	SharedV2ProviderOptions,
+} from "ai-sdk-provider-v2";
+import { DoGenerateResultLike, DoGenerateV2Result } from "./types";
 
 /**
  * Determines the provider type from a given model string.
@@ -52,10 +77,9 @@ export function determineProvider(
  * @param options - The call options containing model parameters.
  * @returns An object containing the extracted model parameters, including temperature, maxTokens, topP, topK, frequencyPenalty, stopSequences, seed, headers, presencePenalty, abortSignal, and responseFormat.
  */
-export function extractModelParameters(options: LanguageModelV1CallOptions) {
-	return {
+export function extractModelParameters(options: LanguageModelV1CallOptions | LanguageModelV2CallOptions) {
+	const params = {
 		temperature: options.temperature,
-		maxTokens: options.maxTokens,
 		topP: options.topP,
 		topK: options.topK,
 		frequencyPenalty: options.frequencyPenalty,
@@ -66,6 +90,7 @@ export function extractModelParameters(options: LanguageModelV1CallOptions) {
 		abortSignal: options.abortSignal,
 		responseFormat: options.responseFormat,
 	};
+	return params;
 }
 
 /**
@@ -118,8 +143,7 @@ export type MaximVercelProviderMetadata = {
  * @param options - The call options containing provider metadata.
  * @returns The extracted Maxim metadata with a guaranteed `spanId`, or undefined if not present.
  */
-export function extractMaximMetadataFromOptions(options: LanguageModelV1CallOptions) {
-	const metadata = options.providerMetadata;
+export function extractMaximMetadataFromOptions(metadata: LanguageModelV1ProviderMetadata | SharedV2ProviderOptions | undefined) {
 	if (!metadata || !metadata["maxim"]) return undefined;
 	const maximMetadata = metadata["maxim"] as MaximVercelProviderMetadata;
 	return {
@@ -206,29 +230,87 @@ export function parsePromptMessages(prompt: LanguageModelV1Prompt): Array<Comple
 	return promptMessages;
 }
 
-/**
- * Represents the expected structure of a result from a language model generation call.
- *
- * This interface defines the minimal fields required for converting a generation result into a standardized chat completion result, including token usage and model information.
- *
- * @property usage - Token usage statistics for the generation.
- * @property usage.promptTokens - Number of tokens in the prompt.
- * @property usage.completionTokens - Number of tokens in the completion.
- * @property response - Optional response metadata, including model identifiers.
- * @property response.model_id - The model identifier (snake_case).
- * @property response.modelId - The model identifier (camelCase).
- * @property rawResponse - The raw response object from the model provider.
- */
-interface DoGenerateResultLike {
-	usage: {
-		promptTokens: number;
-		completionTokens: number;
-	};
-	response?: {
-		model_id?: string;
-		modelId?: string;
-	};
-	rawResponse?: any;
+export function parsePromptMessagesV2(prompt: LanguageModelV2Prompt): Array<CompletionRequest | ChatCompletionMessage> {
+	const promptMessages: Array<CompletionRequest | ChatCompletionMessage> = prompt
+		.map((promptMsg) => {
+			switch (promptMsg.role) {
+				case "system": {
+					return [
+						{
+							role: "system",
+							content: promptMsg.content,
+						},
+					] as Array<CompletionRequest | ChatCompletionMessage>;
+				}
+				case "user": {
+					return [
+						{
+							role: "user",
+							content: promptMsg.content.map((msg): CompletionRequestContent => {
+								switch (msg.type) {
+									case "text":
+										return {
+											type: "text",
+											text: msg.text,
+										};
+									case "file":
+										return {
+											type: "image_url",
+											image_url: {
+												url: msg.filename ?? "",
+											},
+										};
+									default:
+										throw new Error(`Unsupported user message type: ${msg}`);
+								}
+							}),
+						},
+					] as Array<CompletionRequest | ChatCompletionMessage>;
+				}
+				case "assistant": {
+					const assistantText = promptMsg.content.find((msg) => msg.type === "text");
+					const assistantToolCalls = promptMsg.content.filter((msg) => msg.type === "tool-call");
+					return [
+						{
+							role: "assistant",
+							content: assistantText?.text ?? null,
+							tool_calls: assistantToolCalls.map((tool) => ({
+								id: tool.toolCallId,
+								type: "function",
+								function: {
+									name: tool.toolName,
+									arguments: JSON.stringify(tool.input),
+								},
+							})),
+						},
+					] as Array<CompletionRequest | ChatCompletionMessage>;
+				}
+				case "tool": {
+					return promptMsg.content.map((part) => ({
+						role: "tool",
+						tool_call_id: part.toolCallId,
+						content: parseToolResultOutput(part.output),
+					})) as Array<CompletionRequest | ChatCompletionMessage>;
+				}
+			}
+		})
+		.flat();
+
+	return promptMessages;
+}
+
+function parseToolResultOutput(content: LanguageModelV2ToolResultOutput): string {
+	switch (content.type) {
+		case "text":
+		case "error-text":
+			return content.value;
+		case "json":
+		case "error-json":
+		case "content":
+			return JSON.stringify(content.value);
+		default:
+			throw new Error(`Unknown tool result type: ${content}`);
+	}
 }
 
 /**
@@ -254,6 +336,92 @@ export function convertDoGenerateResultToChatCompletionResult(result: DoGenerate
 			prompt_tokens: result.usage.promptTokens,
 			completion_tokens: result.usage.completionTokens,
 			total_tokens: result.usage.promptTokens + result.usage.completionTokens,
+		},
+	};
+}
+
+export function convertDoGenerateResultToChatCompletionResultV2(result: DoGenerateV2Result): ChatCompletionResult {
+	return {
+		id: uuid(),
+		object: "chat_completion",
+		created: Math.floor(Date.now() / 1000),
+		model: result.response?.modelId ?? "unknown",
+		choices: result.content.map((content, index) => {
+			switch (content.type) {
+				case "text":
+					return {
+						index,
+						message: {
+							content: content.text,
+							role: "assistant",
+						},
+						finish_reason: result.finishReason,
+					} as ChatCompletionChoice;
+				case "file":
+					return {
+						index,
+						message: {
+							content: content.data,
+							role: "assistant",
+						},
+						finish_reason: result.finishReason,
+					} as ChatCompletionChoice;
+				case "tool-call":
+					return {
+						index,
+						logprobs: null,
+						message: {
+							content: null,
+							role: "assistant",
+							tool_calls: [
+								{
+									id: content.toolCallId,
+									type: "function",
+									function: {
+										name: content.toolName,
+										arguments: content.input,
+									},
+								},
+							],
+						},
+						finish_reason: result.finishReason,
+					} as ChatCompletionChoice;
+				case "tool-result":
+					return {
+						index,
+						logprobs: null,
+						message: {
+							content: typeof content.result === "string" ? content.result : JSON.stringify(content.result),
+							role: "assistant",
+						},
+						finish_reason: result.finishReason,
+					} as ChatCompletionChoice;
+				case "source":
+					return {
+						index,
+						logprobs: null,
+						message: {
+							content: content.sourceType === "url" ? content.url : content.title,
+							role: "assistant",
+						},
+						finish_reason: result.finishReason,
+					} as ChatCompletionChoice;
+				default:
+					return {
+						index,
+						logprobs: null,
+						message: {
+							content: JSON.stringify(content),
+							role: "assistant",
+						},
+						finish_reason: result.finishReason,
+					} as ChatCompletionChoice;
+			}
+		}),
+		usage: {
+			prompt_tokens: result.usage.inputTokens ?? 0,
+			completion_tokens: result.usage.outputTokens ?? 0,
+			total_tokens: (result.usage.inputTokens ?? 0) + (result.usage.outputTokens ?? 0),
 		},
 	};
 }
@@ -352,6 +520,94 @@ function processChunks(chunks: LanguageModelV1StreamPart[]) {
 				break;
 			case "finish":
 				usage = chunk.usage;
+				finishReason = chunk.finishReason;
+				break;
+		}
+	}
+
+	return { text, toolCalls: Object.values(toolCalls), usage, finishReason };
+}
+
+export function processStreamV2(
+	chunks: LanguageModelV2StreamPart[],
+	span: Span,
+	trace: Trace,
+	generation: Generation,
+	model: string,
+	maximMetadata: MaximVercelProviderMetadata | undefined,
+) {
+	try {
+		const result = processChunksV2(chunks);
+
+		generation.result({
+			id: uuid(),
+			object: "chat_completion",
+			created: Math.floor(Date.now() / 1000),
+			model: model,
+			choices: [
+				{
+					index: 0,
+					message: {
+						tool_calls: result.toolCalls.map((toolCall) => ({
+							id: toolCall.toolCallId,
+							type: toolCall.type,
+							function: {
+								name: toolCall.toolName,
+								arguments: toolCall.input,
+							},
+						})),
+						content: result.text,
+						role: "assistant",
+					},
+					finish_reason: result.finishReason ?? "stop",
+					logprobs: null,
+				},
+			],
+			usage: {
+				prompt_tokens: result.usage?.promptTokens ?? 0,
+				completion_tokens: result.usage?.completionTokens ?? 0,
+				total_tokens: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
+			},
+		});
+		generation.end();
+	} catch (error) {
+		generation.error({
+			message: (error as Error).message,
+		});
+		console.error("[Maxim SDK] Logging failed:", error);
+	} finally {
+		span.end();
+		if (!maximMetadata?.traceId) trace.end();
+	}
+}
+
+function processChunksV2(chunks: LanguageModelV2StreamPart[]) {
+	let text = "";
+	const toolCalls: Record<string, LanguageModelV2ToolCall> = {};
+	let usage:
+		| {
+				promptTokens: number;
+				completionTokens: number;
+		  }
+		| undefined = undefined;
+	let finishReason: string | undefined = undefined;
+
+	for (const chunk of chunks) {
+		switch (chunk.type) {
+			case "text-delta":
+				text += chunk.delta;
+				break;
+			case "tool-call":
+				toolCalls[chunk.toolName] = chunk;
+				break;
+			case "tool-result":
+				text += typeof chunk.result === "string" ? chunk.result : JSON.stringify(chunk.result);
+				break;
+			case "finish":
+				usage = {
+					promptTokens: chunk.usage.inputTokens ?? 0,
+					completionTokens: chunk.usage.outputTokens ?? 0,
+				};
 				finishReason = chunk.finishReason;
 				break;
 		}
