@@ -131,7 +131,7 @@ export function createCustomEvaluator<T extends DataStructure | undefined = unde
  *   .withEvaluators(qualityEvaluator)
  *   .run();
  */
-export function createCustomCombinedEvaluatorsFor<const U extends string[]>(...names: U) {
+export function createCustomCombinedEvaluatorsFor<U extends readonly [string, ...string[]]>(...names: U) {
 	return {
 		/**
 		 * Builds the combined evaluator with evaluation function and pass/fail criteria.

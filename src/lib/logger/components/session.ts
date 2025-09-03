@@ -130,4 +130,36 @@ export class Session extends EvaluatableBaseContainer {
 		config.sessionId = id;
 		return new Trace(config, writer);
 	}
+
+	/**
+	 * Adds a numeric metric to this session.
+	 *
+	 * Records quantitative values such as counts and aggregates across all traces in the
+	 * session. Each call adds or updates a single metric entry under the provided name.
+	 *
+	 * Common examples include: `tool_calls_count`, `traces_count`, `user_messages_count`, `assistant_messages_count`.
+	 *
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (numeric)
+	 * @returns void
+	 * @example
+	 * session.addMetric('traces_count', 4);
+	 * session.addMetric('user_messages_count', 2);
+	 */
+	public addMetric(name: string, value: number) {
+		this.commit("update", { metrics: { [name]: value } });
+	}
+
+	/**
+	 * Static method to add a metric to any session by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The session ID
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (numeric)
+	 * @returns void
+	 */
+	public static addMetric_(writer: LogWriter, id: string, name: string, value: number) {
+		EvaluatableBaseContainer.commit_(writer, Session.ENTITY, id, "update", { metrics: { [name]: value } });
+	}
 }

@@ -29,7 +29,7 @@ export type LocalEvaluatorType<T extends DataStructure | undefined = undefined> 
 };
 
 export type CombinedLocalEvaluatorType<T extends DataStructure | undefined, U extends Record<string, PassFailCriteriaType>> = {
-	names: (keyof U)[];
+	names: ReadonlyArray<keyof U>;
 	evaluationFunction: (
 		result: { output: string; contextToEvaluate?: string | string[] },
 		data: Data<T>,

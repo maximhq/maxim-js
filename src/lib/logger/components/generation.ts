@@ -334,6 +334,44 @@ export class Generation extends EvaluatableBaseContainer {
 	}
 
 	/**
+	 * Adds a numeric metric to this generation.
+	 *
+	 * Records quantitative values such as generation quality metrics, token accounting,
+	 * and streaming/throughput characteristics under a named metric. Each call adds
+	 * or updates a single metric entry.
+	 *
+	 * Common examples include: `tokens_in`, `tokens_out`, `output_tokens`, `ttft_ms` (Time To First Token),
+	 * `tps` (tokens per second), `avg_logprob`.
+	 *
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (numeric)
+	 * @returns void
+	 * @example
+	 * generation.addMetric('tokens_in', 312);
+	 * generation.addMetric('tokens_out', 87);
+	 * generation.addMetric('output_tokens', 87);
+	 * generation.addMetric('ttft_ms', 180.5);
+	 * generation.addMetric('tps', 15.8);
+	 * generation.addMetric('avg_logprob', -0.32);
+	 */
+	public addMetric(name: string, value: number) {
+		this.commit("update", { metrics: { [name]: value } });
+	}
+
+	/**
+	 * Static method to add a metric to any generation by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The generation ID
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (float/number)
+	 * @returns void
+	 */
+	public static addMetric_(writer: LogWriter, id: string, name: string, value: number) {
+		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "update", { metrics: { [name]: value } });
+	}
+
+	/**
 	 * Adds an attachment to this generation (can be of type `file`, `data`, or `url`).
 	 *
 	 * @param attachment - The attachment to add (file, data, or URL)

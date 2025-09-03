@@ -469,6 +469,15 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.14.0
+
+- **New Feature**: Added comprehensive metric tracking capabilities across all logger components
+  - Added `addMetric()` method to `Generation` class for tracking generation quality metrics, token accounting, and streaming characteristics
+  - Added `addMetric()` method to `Retrieval` class for tracking RAG evaluation metrics like precision, recall, MRR, and NDCG
+  - Added `addMetric()` method to `Session` class for tracking session-level aggregates like trace counts and message counts
+  - Added `addMetric()` method to `Trace` class for tracking trace-level metrics like tool call counts, costs, and evaluation scores
+  - Added logger level methods to `MaximLogger` class: `sessionAddMetric()`, `traceAddMetric()`, `generationAddMetric()`, and `retrievalAddMetric()`
+
 ### v6.13.0
 
 - **feat**: Added `AI SDK v5` support. Keeps `AI SDK v4` support intact
