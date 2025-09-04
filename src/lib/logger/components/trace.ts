@@ -184,6 +184,42 @@ export class Trace extends EventEmittingBaseContainer {
 	}
 
 	/**
+	 * Adds a numeric metric to this trace.
+	 *
+	 * Records quantitative values such as tool call counts, retry attempts, total tokens,
+	 * overall cost, or aggregated evaluation scores under a named metric. Each call adds
+	 * or updates a single metric entry.
+	 *
+	 * Common examples include: `tool_calls_count`, `retries_count`, `cost_usd`, `tokens_total`,
+	 * `eval_overall_score`, `user_feedback_score`.
+	 *
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (numeric)
+	 * @returns void
+	 * @example
+	 * trace.addMetric('tool_calls_count', 3);
+	 * trace.addMetric('cost_usd', 0.05);
+	 * trace.addMetric('tokens_total', 1420);
+	 * trace.addMetric('user_feedback_score', 4.7);
+	 */
+	public addMetric(name: string, value: number) {
+		this.commit("update", { metrics: { [name]: value } });
+	}
+
+	/**
+	 * Static method to add a metric to any trace by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The trace ID
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (float/number)
+	 * @returns void
+	 */
+	public static addMetric_(writer: LogWriter, id: string, name: string, value: number) {
+		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "update", { metrics: { [name]: value } });
+	}
+
+	/**
 	 * Adds an attachment to this trace.
 	 *
 	 * @param attachment - The attachment to add (can be of type file, data, or URL)

@@ -213,6 +213,25 @@ export class MaximLogger {
 	}
 
 	/**
+	 * Adds a numeric metric to a session.
+	 *
+	 * Records quantitative values such as counts and aggregates across all traces in the
+	 * session under a named metric.
+	 *
+	 * Common examples include: `tool_calls_count`, `traces_count`, `user_messages_count`, `assistant_messages_count`.
+	 *
+	 * @param sessionId - The unique identifier of the session
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (numeric)
+	 * @returns void
+	 * @example
+	 * logger.sessionAddMetric('session-123', 'traces_count', 4);
+	 */
+	public sessionAddMetric(sessionId: string, name: string, value: number) {
+		Session.addMetric_(this.writer, sessionId, name, value);
+	}
+
+	/**
 	 * Creates a new trace associated with a session.
 	 *
 	 * @param sessionId - The unique identifier of the session
@@ -368,6 +387,27 @@ export class MaximLogger {
 	 */
 	public traceAddToSession(traceId: string, sessionId: string) {
 		Trace.addToSession_(this.writer, traceId, sessionId);
+	}
+
+	/**
+	 * Adds a numeric metric to a trace.
+	 *
+	 * Records quantitative values such as tool call counts, retry attempts, total tokens,
+	 * overall cost, or aggregated evaluation scores under a named metric.
+	 *
+	 * Common examples include: `tool_calls_count`, `retries_count`, `cost_usd`, `tokens_total`,
+	 * `eval_overall_score`, `user_feedback_score`.
+	 *
+	 * @param traceId - The unique identifier of the trace
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (numeric)
+	 * @returns void
+	 * @example
+	 * logger.traceAddMetric('trace-123', 'tool_calls_count', 5);
+	 * logger.traceAddMetric('trace-123', 'tokens_total', 1500);
+	 */
+	public traceAddMetric(traceId: string, name: string, value: number) {
+		Trace.addMetric_(this.writer, traceId, name, value);
 	}
 
 	/**
@@ -548,6 +588,29 @@ export class MaximLogger {
 	 */
 	public generationSetModelParameters(generationId: string, modelParameters: Record<string, any>) {
 		Generation.setModelParameters_(this.writer, generationId, modelParameters);
+	}
+
+	/**
+	 * Adds a numeric metric to a generation.
+	 *
+	 * Records quantitative values such as generation quality metrics, token accounting,
+	 * and streaming/throughput characteristics under a named metric.
+	 *
+	 * Common examples include: `tokens_in`, `tokens_out`, `output_tokens`, `ttft_ms` (Time To First Token),
+	 * `tps` (tokens per second), `avg_logprob`.
+	 *
+	 * @param generationId - The unique identifier of the generation
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (numeric)
+	 * @returns void
+	 * @example
+	 * logger.generationAddMetric('gen-123', 'output_tokens', 87);
+	 * logger.generationAddMetric('gen-123', 'ttft_ms', 180.5);
+	 * logger.generationAddMetric('gen-123', 'tps', 15.8);
+	 * logger.generationAddMetric('gen-123', 'avg_logprob', -0.32);
+	 */
+	public generationAddMetric(generationId: string, name: string, value: number) {
+		Generation.addMetric_(this.writer, generationId, name, value);
 	}
 
 	/**
@@ -862,6 +925,28 @@ export class MaximLogger {
 	 */
 	public retrievalInput(retrievalId: string, input: string) {
 		Retrieval.input_(this.writer, retrievalId, input);
+	}
+
+	/**
+	 * Adds a numeric metric to a retrieval.
+	 *
+	 * Records quantitative values used in information retrieval and RAG evaluation under a
+	 * named metric.
+	 *
+	 * Common examples include: `precision`, `recall`, `f1_score`, `mrr` (Mean Reciprocal Rank),
+	 * `ndcg` (Normalized Discounted Cumulative Gain), `avg_similarity`, `results_count`,
+	 * `unique_sources_count`.
+	 *
+	 * @param retrievalId - The unique identifier of the retrieval
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (numeric)
+	 * @returns void
+	 * @example
+	 * logger.retrievalAddMetric('retrieval-123', 'precision', 0.86);
+	 * logger.retrievalAddMetric('retrieval-123', 'mrr', 0.58);
+	 */
+	public retrievalAddMetric(retrievalId: string, name: string, value: number) {
+		Retrieval.addMetric_(this.writer, retrievalId, name, value);
 	}
 
 	/**

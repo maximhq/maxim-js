@@ -117,4 +117,40 @@ export class Retrieval extends EvaluatableBaseContainer {
 		}
 		EvaluatableBaseContainer.commit_(writer, Entity.RETRIEVAL, id, "end", { docs: finalDocs, endTimestamp: new Date() });
 	}
+
+	/**
+	 * Adds a numeric metric to this retrieval.
+	 *
+	 * Records quantitative values used in information retrieval and RAG evaluation under a
+	 * named metric. Each call adds or updates a single metric entry.
+	 *
+	 * Common examples include: `precision`, `recall`, `f1_score`, `mrr` (Mean Reciprocal Rank),
+	 * `ndcg` (Normalized Discounted Cumulative Gain), `avg_similarity`, `results_count`,
+	 * `unique_sources_count`.
+	 *
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (numeric)
+	 * @returns void
+	 * @example
+	 * retrieval.addMetric('precision', 0.82);
+	 * retrieval.addMetric('recall', 0.76);
+	 * retrieval.addMetric('mrr', 0.61);
+	 * retrieval.addMetric('results_count', 10);
+	 */
+	public addMetric(name: string, value: number) {
+		this.commit("update", { metrics: { [name]: value } });
+	}
+
+	/**
+	 * Static method to add a metric to any retrieval by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The retrieval ID
+	 * @param name - Name of the metric
+	 * @param value - Numeric value of the metric (float/number)
+	 * @returns void
+	 */
+	public static addMetric_(writer: LogWriter, id: string, name: string, value: number) {
+		EvaluatableBaseContainer.commit_(writer, Entity.RETRIEVAL, id, "update", { metrics: { [name]: value } });
+	}
 }
