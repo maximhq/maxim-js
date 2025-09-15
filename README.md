@@ -477,6 +477,14 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.15.0
+
+- **feat**: Added enhanced React Native support
+  - Introduced a platform adapter that automatically switches between Node.js and React Native implementations as appropriate
+  - Ensures seamless integration and feature parity across Node.js and React Native environments
+  - No breaking changes for existing Node.js users; React Native projects benefit from optimized platform-specific handling
+
+
 ### v6.14.0
 
 - **New Feature**: Added comprehensive metric tracking capabilities across all logger components
