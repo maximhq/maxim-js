@@ -14,8 +14,7 @@ import {
 } from "../models/dataset";
 import { type MaximAPIResponse } from "../models/deployment";
 import { MaximAPI } from "./maxim";
-import mimeTypes from "mime-types";
-import fs from 'fs/promises';
+import { platform } from "../platform";
 
 export class MaximDatasetAPI extends MaximAPI {
 	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
@@ -96,7 +95,7 @@ export class MaximDatasetAPI extends MaximAPI {
 			if (!mimeType || mimeType === 'application/octet-stream') {
 				const source = file.name ?? (file.type === "file" ? (file as FileAttachment).path : undefined);
 				if (source) {
-					const inferredType = mimeTypes.lookup(source);
+					const inferredType = platform.mime.lookup(source);
 					if (inferredType) {
 						mimeType = inferredType;
 					}
@@ -200,17 +199,21 @@ export class MaximDatasetAPI extends MaximAPI {
 					throw new Error(`File size exceeds the maximum allowed size of ${maxFileSizeBytes} bytes`);
 				  }
 			} else {
+				if (!platform.features.fileIoSupported) {
+					throw new Error("File operations are not supported in this environment");
+				}
+				
 				let stats;
 				try {
-					stats = await fs.stat(attachment.path);
+					stats = await platform.fs.readFile(attachment.path);
 				} catch (error) {
 					throw new Error(`File not found: ${attachment.path}`);
 				}
-				if (stats.size > maxFileSizeBytes) {
+				if (stats.data.length > maxFileSizeBytes) {
 					throw new Error(`File size exceeds the maximum allowed size of ${maxFileSizeBytes} bytes`);
 				}
 				try {
-					fileData = await fs.readFile(attachment.path);
+					fileData = Buffer.from(stats.data);
 				} catch (error) {
 					throw new Error(`File not found: ${attachment.path}`);
 				}

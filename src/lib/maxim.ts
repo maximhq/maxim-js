@@ -15,6 +15,7 @@ import { PromptChain, PromptChainVersionsAndRules } from "./models/promptChain";
 import { QueryRule } from "./models/queryBuilder";
 import { type TestRunBuilder } from "./models/testRun";
 import { createTestRunBuilder } from "./testRun/testRun";
+import { platform } from "./platform";
 
 declare global {
 	var __maxim__sdk__instances__: Map<string, Maxim>;
@@ -220,12 +221,12 @@ export class Maxim {
 		if (config.promptManagement) {
 			this.isPromptManagementEnabled = true;
 			this.sync = this.syncEntities();
-			this.intervalHandle = setInterval(() => {
+			this.intervalHandle = platform.timers.setInterval(() => {
 				this.syncEntities();
 			}, 1000 * 60);
 
 			// Call unref() to tell Node.js that this interval should not keep the process alive
-			this.intervalHandle.unref();
+			platform.timers.maybeUnref(this.intervalHandle);
 		}
 		// Initialize or update the global instances array
 		if (!globalThis.__maxim__sdk__instances__) {

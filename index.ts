@@ -49,6 +49,7 @@ export type {
 export * from "./src/lib/models/queryBuilder";
 export type { TestRunBuilder, TestRunConfig, TestRunLogger, TestRunResult, YieldedOutput } from "./src/lib/models/testRun";
 export * from "./src/lib/utils/csvParser";
+export * from "./src/lib/utils/secureRandom";
 // Additional exports for complete documentation coverage
 export type { MaximLogsAPI } from "./src/lib/apis/logs";
 export type {

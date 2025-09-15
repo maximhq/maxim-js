@@ -1,7 +1,6 @@
 import axios, { AxiosError, AxiosHeaders, AxiosInstance, AxiosRequestConfig, Method } from "axios";
 import axiosRetry from "axios-retry";
-import { Agent as HttpAgent } from "node:http";
-import { Agent as HttpsAgent } from "node:https";
+import { platform } from "../platform";
 
 // Network error codes that should trigger retries
 const RETRIABLE_ERROR_CODES = [
@@ -32,7 +31,7 @@ export class MaximAPI {
 		this.isDebug = isDebug;
 
 		// Create axios instance with optimal configuration
-		this.axiosInstance = axios.create({
+		const axiosConfig: AxiosRequestConfig = {
 			baseURL: baseUrl,
 			timeout: 30000, // 30 second timeout
 			headers: {
@@ -40,24 +39,30 @@ export class MaximAPI {
 				Accept: "application/json",
 				Connection: "keep-alive",
 			},
-			// Enable connection pooling and keep-alive
-			httpAgent: new HttpAgent({
-				keepAlive: true,
-				keepAliveMsecs: 30000,
-				maxSockets: 100,
-				maxFreeSockets: 10,
-				timeout: 30000,
-			}),
-			httpsAgent: new HttpsAgent({
-				keepAlive: true,
-				keepAliveMsecs: 30000,
-				maxSockets: 100,
-				maxFreeSockets: 10,
-				timeout: 30000,
-			}),
 			// Handle both localhost and production environments
 			validateStatus: (status) => status < 600, // Don't throw on any status code, let us handle it
+		};
+
+		// Add agents only if platform supports them
+		const httpAgent = platform.net.httpAgent({
+			keepAlive: true,
+			keepAliveMsecs: 30000,
+			maxSockets: 100,
+			maxFreeSockets: 10,
+			timeout: 30000,
 		});
+		const httpsAgent = platform.net.httpsAgent({
+			keepAlive: true,
+			keepAliveMsecs: 30000,
+			maxSockets: 100,
+			maxFreeSockets: 10,
+			timeout: 30000,
+		});
+
+		if (httpAgent) axiosConfig.httpAgent = httpAgent;
+		if (httpsAgent) axiosConfig.httpsAgent = httpsAgent;
+
+		this.axiosInstance = axios.create(axiosConfig);
 
 		// Configure comprehensive retry logic
 		axiosRetry(this.axiosInstance, {

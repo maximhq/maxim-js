@@ -69,22 +69,39 @@
 	"type": "commonjs",
 	"main": "index.js",
 	"typings": "index.d.ts",
+	"react-native": "index.react-native.js",
 	"exports": {
 		".": {
+			"react-native": "./index.react-native.js",
 			"types": "./index.d.ts",
 			"default": "./index.js"
 		},
 		"./langchain": {
+			"react-native": "./langchain.js",
 			"types": "./langchain.d.ts",
 			"default": "./langchain.js"
 		},
 		"./vercel-ai-sdk": {
+			"react-native": "./vercel-ai-sdk.js",
 			"types": "./vercel-ai-sdk.d.ts",
 			"default": "./vercel-ai-sdk.js"
+		},
+		"./platform": {
+			"react-native": "./src/lib/platform/reactNative.js",
+			"types": "./src/lib/platform/adapter.d.ts",
+			"default": "./src/lib/platform/index.js"
 		}
 	},
 	"dependencies": {
 		"axios": "^1.11.0",
 		"axios-retry": "^4.5.0"
+	},
+	"peerDependenciesMeta": {
+		"expo-crypto": {
+			"optional": true
+		}
+	},
+	"optionalDependencies": {
+		"expo-crypto": "^13.0.0"
 	}
 }

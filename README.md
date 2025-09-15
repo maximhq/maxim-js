@@ -4,6 +4,14 @@
 
 This is JS/TS SDK for enabling Maxim observability. [Maxim](https://www.getmaxim.ai?ref=npm) is an enterprise grade evaluation and observability platform.
 
+## Platform Support
+
+- ✅ **Node.js** - Full feature support
+- ✅ **React Native** - Core features with platform-specific optimizations
+- ✅ **Web/Browser** - Via bundlers like Webpack, Vite, etc.
+
+> **React Native developers**: See [REACT_NATIVE_SETUP.md](./REACT_NATIVE_SETUP.md) for setup instructions and platform-specific considerations.
+
 ## How to integrate
 
 ### Install
