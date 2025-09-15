@@ -51,7 +51,8 @@
 	},
 	"peerDependencies": {
 		"@types/mime-types": "3.0.1",
-		"mime-types": "3.0.1"
+		"mime-types": "3.0.1",
+		"expo-crypto": "^13.0.0"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -100,8 +101,5 @@
 		"expo-crypto": {
 			"optional": true
 		}
-	},
-	"optionalDependencies": {
-		"expo-crypto": "^13.0.0"
 	}
 }

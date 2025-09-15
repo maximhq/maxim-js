@@ -145,7 +145,7 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 		this.columnStructure = columnStructure as T;
 		this.options = {
 			delimiter: options.delimiter ?? ",",
-			hasHeader: columnStructure ? true : (options.hasHeader ?? true),
+			hasHeader: columnStructure ? true : options.hasHeader ?? true,
 			quoteChar: options.quoteChar ?? '"',
 			escapeChar: options.escapeChar ?? '"',
 		};
@@ -294,30 +294,40 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 		if (!platform.features.csvSupported) {
 			throw new Error("CSV file operations are not supported in this environment");
 		}
-		
+
 		if (this.headerRow === null) {
 			return new Promise((resolve, reject) => {
 				let headerProcessed = false;
+				let buffer = "";
 				const parser = new platform.stream.Transform({
-					transform: (chunk: Buffer, encoding: string, callback: any) => {
-						if (!headerProcessed) {
-							const line = chunk.toString().split('\n')[0];
+					transform: (chunk: Buffer, _enc: string, cb: any) => {
+						if (headerProcessed) return cb();
+						buffer += chunk.toString();
+						const nl = buffer.indexOf("\n");
+						if (nl !== -1) {
+							const line = buffer.slice(0, nl).replace(/\r$/, "");
 							this.headerRow = this.parseRow(line);
 							headerProcessed = true;
 							parser.destroy();
 							resolve(this.headerRow);
 						}
-						callback();
+						cb();
 					},
-					flush: (callback: any) => {
-						if (!headerProcessed) {
+					flush: (cb: any) => {
+						if (!headerProcessed && buffer.length > 0) {
+							const line = buffer.replace(/\r$/, "");
+							this.headerRow = this.parseRow(line);
+							headerProcessed = true;
+							resolve(this.headerRow);
+						} else if (!headerProcessed) {
 							reject(new Error("Failed to read header row from CSV file."));
 						}
-						callback();
+						cb();
 					},
 				});
 
-				(platform.fs as any).createReadStream(this.filePath)
+				(platform.fs as any)
+					.createReadStream(this.filePath)
 					.pipe(parser)
 					.on("error", (err: any) => {
 						reject(err);
@@ -343,7 +353,7 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 		if (!platform.features.csvSupported) {
 			throw new Error("CSV file operations are not supported in this environment");
 		}
-		
+
 		if (index < 0) {
 			throw new Error("Row index must be non-negative.");
 		}
@@ -357,7 +367,7 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 				transform: (chunk: Buffer, encoding: string, callback: any) => {
 					bytesRead += chunk.length;
 					const data = lineBuffer + chunk.toString();
-					const lines = data.split('\n');
+					const lines = data.split("\n");
 					lineBuffer = lines.pop() || "";
 
 					for (const line of lines) {
@@ -394,7 +404,8 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 				},
 			});
 
-			(platform.fs as any).createReadStream(this.filePath)
+			(platform.fs as any)
+				.createReadStream(this.filePath)
 				.pipe(parser)
 				.on("error", (err: any) => {
 					reject(err);
@@ -465,7 +476,7 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 		if (!platform.features.csvSupported) {
 			throw new Error("CSV file operations are not supported in this environment");
 		}
-		
+
 		return new Promise((resolve, reject) => {
 			let isFirstRow = true;
 			let lineBuffer = "";
@@ -473,7 +484,7 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 			const parser = new platform.stream.Transform({
 				transform: (chunk: Buffer, encoding: string, callback: any) => {
 					const data = lineBuffer + chunk.toString();
-					const lines = data.split('\n');
+					const lines = data.split("\n");
 					lineBuffer = lines.pop() || "";
 
 					for (const line of lines) {
@@ -498,7 +509,8 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 				},
 			});
 
-			(platform.fs as any).createReadStream(this.filePath)
+			(platform.fs as any)
+				.createReadStream(this.filePath)
 				.pipe(parser)
 				.on("error", (err: any) => {
 					reject(err);
@@ -562,7 +574,7 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 		if (!platform.features.csvSupported) {
 			throw new Error("CSV file operations are not supported in this environment");
 		}
-		
+
 		const writeOptions = {
 			delimiter: options.delimiter ?? ",",
 			includeHeader: options.includeHeader ?? true,
@@ -577,7 +589,7 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 				const rowArray = columnStructure
 					? Object.keys(columnStructure).map((key) => (row as { [K in keyof T]: string })[key as keyof T])
 					: (row as string[]);
-				return CSVFile.formatRow(rowArray, writeOptions) + '\n';
+				return CSVFile.formatRow(rowArray, writeOptions) + "\n";
 			};
 
 			writeStream.on("error", (err: any) => {
@@ -591,7 +603,7 @@ export class CSVFile<T extends ColumnStructure | undefined = undefined> {
 			const writeData = async () => {
 				if (writeOptions.includeHeader && columnStructure) {
 					const headerRow = Object.keys(columnStructure);
-					if (!writeStream.write(CSVFile.formatRow(headerRow, writeOptions) + '\n')) {
+					if (!writeStream.write(CSVFile.formatRow(headerRow, writeOptions) + "\n")) {
 						await new Promise((resolve) => writeStream.once("drain", () => resolve("drained")));
 					}
 				}
