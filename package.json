@@ -1,7 +1,7 @@
 {
 	"name": "@maximai/maxim-js",
 	"description": "Maxim AI JS SDK. Visit https://getmaxim.ai for more info.",
-	"version": "6.14.0",
+	"version": "6.15.0",
 	"scripts": {
 		"build": "npx tsc -p tsconfig.lib.json && npm run copy-assets && npm run clean-package",
 		"copy-assets": "copyfiles \"README.md\" \"LICENSE\" dist",
@@ -51,7 +51,8 @@
 	},
 	"peerDependencies": {
 		"@types/mime-types": "3.0.1",
-		"mime-types": "3.0.1"
+		"mime-types": "3.0.1",
+		"expo-crypto": "^13.0.0"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -69,22 +70,36 @@
 	"type": "commonjs",
 	"main": "index.js",
 	"typings": "index.d.ts",
+	"react-native": "index.react-native.js",
 	"exports": {
 		".": {
+			"react-native": "./index.react-native.js",
 			"types": "./index.d.ts",
 			"default": "./index.js"
 		},
 		"./langchain": {
+			"react-native": "./langchain.js",
 			"types": "./langchain.d.ts",
 			"default": "./langchain.js"
 		},
 		"./vercel-ai-sdk": {
+			"react-native": "./vercel-ai-sdk.js",
 			"types": "./vercel-ai-sdk.d.ts",
 			"default": "./vercel-ai-sdk.js"
+		},
+		"./platform": {
+			"react-native": "./src/lib/platform/reactNative.js",
+			"types": "./src/lib/platform/adapter.d.ts",
+			"default": "./src/lib/platform/index.js"
 		}
 	},
 	"dependencies": {
 		"axios": "^1.11.0",
 		"axios-retry": "^4.5.0"
+	},
+	"peerDependenciesMeta": {
+		"expo-crypto": {
+			"optional": true
+		}
 	}
 }

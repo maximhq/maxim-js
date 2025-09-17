@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import { platform } from "../platform";
 
 export class Semaphore {
 	private static semaphores: Map<string, Semaphore> = new Map();
@@ -18,7 +18,7 @@ export class Semaphore {
 	}
 
 	private static hash(key: string): string {
-		return crypto.createHash("md5").update(key).digest("hex");
+		return platform.crypto.createHash("md5").update(key).digest("hex");
 	}
 
 	async acquire(): Promise<void> {

@@ -1,8 +1,6 @@
-import * as fs from "fs";
-import * as mimeTypes from "mime-types";
-import * as path from "path";
 import { uniqueId } from "../utils";
 import type { Attachment } from "../../types";
+import { platform } from "../../platform";
 /**
  * Auto-populates missing fields in an attachment based on available information.
  *
@@ -33,18 +31,18 @@ export function populateAttachmentFields<T extends Attachment>(attachment: T): T
 
 			// Auto-populate name if missing
 			if (!result.name) {
-				result.name = path.basename(filePath);
+				result.name = platform.path.basename(filePath);
 			}
 
 			// Auto-populate mimeType if missing
 			if (!result.mimeType) {
-				result.mimeType = mimeTypes.lookup(filePath) || "application/octet-stream";
+				result.mimeType = platform.mime.lookup(filePath) || "application/octet-stream";
 			}
 
 			// Auto-populate size if missing
 			if (!result.size) {
 				try {
-					const stats = fs.statSync(filePath);
+					const stats = platform.fs.statSync(filePath);
 					result.size = stats.size;
 				} catch (e) {
 					// Leave size undefined if we can't determine it
@@ -118,18 +116,18 @@ export function populateAttachmentFields<T extends Attachment>(attachment: T): T
 				// Auto-populate name if missing
 				if (!result.name) {
 					const urlPath = urlObj.pathname;
-					result.name = path.basename(urlPath) || urlObj.hostname;
+					result.name = platform.path.basename(urlPath) || urlObj.hostname;
 				}
 
 				// Try to determine MIME type from URL if not already specified
 				if (!result.mimeType) {
 					// First check if the URL path has a file extension
 					const urlPath = urlObj.pathname;
-					const extension = path.extname(urlPath);
+					const extension = platform.path.extname(urlPath);
 
 					if (extension) {
 						// Try to get MIME type from extension
-						const detectedMimeType = mimeTypes.lookup(extension);
+						const detectedMimeType = platform.mime.lookup(extension);
 						if (detectedMimeType) {
 							result.mimeType = detectedMimeType;
 						}
@@ -139,9 +137,9 @@ export function populateAttachmentFields<T extends Attachment>(attachment: T): T
 					// try to extract file path before those
 					if (!result.mimeType && (urlObj.search || urlObj.hash)) {
 						const cleanPath = urlPath.split(/[?#]/)[0];
-						const extension = path.extname(cleanPath);
+						const extension = platform.path.extname(cleanPath);
 						if (extension) {
-							const detectedMimeType = mimeTypes.lookup(extension);
+							const detectedMimeType = platform.mime.lookup(extension);
 							if (detectedMimeType) {
 								result.mimeType = detectedMimeType;
 							}

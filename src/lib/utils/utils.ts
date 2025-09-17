@@ -1,11 +1,11 @@
-import crypto, { randomBytes } from "crypto";
-import os from "os";
+import { platform } from "../platform";
+import { getRandomBytes, getRandomHex } from "./secureRandom";
 
 export function generateUniqueId(): string {
 	const timestamp = Date.now().toString(36); // Convert timestamp to base 36 string
-	const hostname = os.hostname(); // Get the hostname
-	const randomBytes = crypto.randomBytes(4).toString("hex"); // Generate 4 random bytes and convert to hex string
-	return `${timestamp}-${hostname}-${randomBytes}`;
+	const hostname = platform.crypto.hostname(); // Get the hostname
+	const randomPart = getRandomHex(8); // Generate 8 hex chars (4 bytes)
+	return `${timestamp}-${hostname}-${randomPart}`;
 }
 
 export const getAllKeysByValue = <T extends object, V extends T[keyof T]>(obj: T, value: V): (keyof T)[] => {
@@ -29,10 +29,10 @@ export function generateCuid(): string {
 		.padStart(2, "0");
 
 	// Generate cryptographically secure random bytes
-	const randomPart = randomBytes(4).toString("hex");
+	const randomPart = getRandomHex(8); // 4 bytes as hex
 
 	// Get hostname or machine fingerprint (reduced to avoid full hostname)
-	const fingerprint = crypto.createHash("md5").update(os.hostname()).digest("hex").slice(0, 2);
+	const fingerprint = platform.crypto.createHash("md5").update(platform.crypto.hostname()).digest("hex").slice(0, 2);
 
 	// Combine parts to create CUID
 	const prefix = "c";

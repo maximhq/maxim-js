@@ -1,6 +1,3 @@
-import fs from "fs";
-import mimeTypes from "mime-types";
-import os from "os";
 import { v4 as uuid } from "uuid";
 import { MaximAttachmentAPI } from "../apis/attachment";
 import { MaximLogsAPI } from "../apis/logs";
@@ -16,6 +13,7 @@ import type {
 } from "../types";
 import { populateAttachmentFields } from "./components/attachment";
 import { CommitLog, Entity } from "./components/types";
+import { platform } from "../platform";
 
 export type LogWriterConfig = {
 	baseUrl: string;
@@ -35,8 +33,8 @@ export class LogWriter {
 	private storageQueue: Queue<CommitLog> = new Queue<CommitLog>();
 	private mutex: Mutex = Mutex.get(`maxim-logs-${this.id}`);
 	private readonly isDebug: boolean;
-	private flushInterval: NodeJS.Timeout | null = null;
-	private readonly logsDir = `${os.tmpdir()}/maxim-sdk/${this.id}/maxim-logs`;
+	private flushInterval: any = null;
+	private readonly logsDir = `${platform.tmpdir()}/maxim-sdk/${this.id}/maxim-logs`;
 	private logsAPIService: MaximLogsAPI;
 	private attachmentAPIService: MaximAttachmentAPI;
 	private readonly maxInMemoryLogs;
@@ -53,7 +51,7 @@ export class LogWriter {
 		this.logsAPIService = new MaximLogsAPI(config.baseUrl, config.apiKey, config.isDebug);
 		this.attachmentAPIService = new MaximAttachmentAPI(config.baseUrl, config.apiKey, config.isDebug);
 		if (config.autoFlush) {
-			this.flushInterval = setInterval(
+			this.flushInterval = platform.timers.setInterval(
 				() => {
 					this.flush();
 					this.flushStorageLogs();
@@ -63,7 +61,7 @@ export class LogWriter {
 			);
 
 			// Call unref() to tell Node.js that this interval should not keep the process alive
-			this.flushInterval.unref();
+			platform.timers.maybeUnref(this.flushInterval);
 		}
 	}
 
@@ -88,28 +86,21 @@ export class LogWriter {
 	}
 
 	private hasAccessToFilesystem(): boolean {
-		try {
-			fs.accessSync(os.tmpdir(), fs.constants.W_OK);
-			return true;
-		} catch (err) {
-			return false;
-		}
+		return platform.fs.hasAccessToFilesystem();
 	}
 
 	private writeToFile(logs: CommitLog[]) {
 		try {
 			return new Promise<string>((resolve, reject) => {
-				if (!fs.existsSync(this.logsDir)) {
-					fs.mkdirSync(this.logsDir, { recursive: true });
+				if (!platform.fs.existsSync(this.logsDir)) {
+					platform.fs.mkdirpSync(this.logsDir);
 				}
 				const content = logs.map((l) => l.serialize()).join("\n");
 				const filename = `logs-${new Date().toISOString()}.log`;
-				fs.writeFile(`${this.logsDir}/${filename}`, content, (err) => {
-					if (err) {
-						reject(err);
-						return;
-					}
+				platform.fs.writeFile(`${this.logsDir}/${filename}`, content).then(() => {
 					resolve(`${this.logsDir}/${filename}`);
+				}).catch((err) => {
+					reject(err);
 				});
 			});
 		} catch (err) {
@@ -123,18 +114,18 @@ export class LogWriter {
 	}
 
 	private async flushLogFiles() {
-		if (!this.hasAccessToFilesystem() || !fs.existsSync(this.logsDir)) {
+		if (!this.hasAccessToFilesystem() || !platform.fs.existsSync(this.logsDir)) {
 			return;
 		}
-		const files = fs.readdirSync(this.logsDir);
+		const files = platform.fs.readdirSync(this.logsDir);
 		await Promise.all(
 			files.map(async (file) => {
-				const logs = fs.readFileSync(`${this.logsDir}/${file}`, "utf-8");
+				const logs = platform.fs.readFileSync(`${this.logsDir}/${file}`).toString();
 				// Now will push these to the server
 				try {
 					await this.logsAPIService.pushLogs(this.config.repositoryId, logs);
 					try {
-						fs.rmSync(`${this.logsDir}/${file}`);
+						platform.fs.rmSync(`${this.logsDir}/${file}`);
 					} catch (ignored) {}
 				} catch (err: unknown) {
 					if (err && typeof err === "object" && "message" in err && typeof err.message === "string")
@@ -152,10 +143,10 @@ export class LogWriter {
 			}
 
 			// Detect mimetype if not provided
-			const mimeType = attachmentData.mimeType || mimeTypes.lookup(attachmentData.path) || "application/octet-stream";
-			const size = fs.statSync(attachmentData.path).size;
+			const mimeType = attachmentData.mimeType || platform.mime.lookup(attachmentData.path) || "application/octet-stream";
+			const size = platform.fs.statSync(attachmentData.path).size;
 			const key = attachmentData.key;
-			const data = fs.readFileSync(attachmentData.path);
+			const data = platform.fs.readFileSync(attachmentData.path);
 
 			// Get upload URL
 			const resp = await this.attachmentAPIService.getUploadUrl(key, mimeType, size);
@@ -171,7 +162,7 @@ export class LogWriter {
 			this.queue.enqueue(addAttachmentLog);
 
 			// Uploading file to the Maxim API
-			await this.attachmentAPIService.uploadToSignedUrl(resp.url, data, mimeType);
+			await this.attachmentAPIService.uploadToSignedUrl(resp.url, Buffer.from(data), mimeType);
 
 			if (this.isDebug) {
 				console.log(`[MaximSDK] File uploaded to the Maxim API. URL: ${resp.url}, Mime type: ${mimeType}, Size: ${size}`);
@@ -476,7 +467,7 @@ export class LogWriter {
 
 	public async cleanup() {
 		try {
-			if (this.flushInterval) clearInterval(this.flushInterval);
+			if (this.flushInterval) platform.timers.clearInterval(this.flushInterval);
 			await this.flush();
 
 			// Destroy the HTTP/HTTPS agents to close any lingering connections

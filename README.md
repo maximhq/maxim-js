@@ -4,6 +4,14 @@
 
 This is JS/TS SDK for enabling Maxim observability. [Maxim](https://www.getmaxim.ai?ref=npm) is an enterprise grade evaluation and observability platform.
 
+## Platform Support
+
+- ✅ **Node.js** - Full feature support
+- ✅ **React Native** - Core features with platform-specific optimizations
+- ✅ **Web/Browser** - Via bundlers like Webpack, Vite, etc.
+
+> **React Native developers**: See [REACT_NATIVE_SETUP.md](./REACT_NATIVE_SETUP.md) for setup instructions and platform-specific considerations.
+
 ## How to integrate
 
 ### Install
@@ -468,6 +476,14 @@ try {
 For projects still using our separate package [Maxim Langchain Tracer](https://www.npmjs.com/package/@maximai/maxim-js-langchain) (now deprecated in favor of the built-in tracer above), you can use our built-in tracer as is by just replacing the import and installing `@langchain/core`.
 
 ## Version changelog
+
+### v6.15.0
+
+- **feat**: Added enhanced React Native support
+  - Introduced a platform adapter that automatically switches between Node.js and React Native implementations as appropriate
+  - Ensures seamless integration and feature parity across Node.js and React Native environments
+  - No breaking changes for existing Node.js users; React Native projects benefit from optimized platform-specific handling
+
 
 ### v6.14.0
 
