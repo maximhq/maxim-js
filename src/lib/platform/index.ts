@@ -2,70 +2,26 @@ import type { PlatformAdapter } from "./adapter";
 
 // Conditional imports to avoid bundling Node.js modules in React Native
 function detectPlatform(): PlatformAdapter {
-  // Heuristics: if navigator and product is ReactNative or global.__DEV__ with RN-specific globals
-  // In Node, process.versions.node exists. In RN, it's typically undefined or browser-like.
-  // We'll allow manual override via process.env.MAXIM_PLATFORM when available.
+  // Dynamic platform detection based on availability of Node.js modules
+  // Try to detect Node.js environment by attempting to access Node.js modules
+  // If they fail, fallback to React Native
+  
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const g: any = globalThis as any;
-    const env = (typeof process !== "undefined" && (process as any).env) ? (process as any).env : undefined;
-    const forced = env && env.MAXIM_PLATFORM;
+    // Check if we can access Node.js modules without actually requiring them in bundling
+    // Use eval to prevent static analysis from including these in the bundle
+    (0, eval)('require')('os');
+    (0, eval)('require')('fs');
     
-    if (forced === "react-native") {
-      const reactNativeAdapter = require("./reactNative").default;
-      return reactNativeAdapter;
-    }
-    
-    if (forced === "node") {
-      try {
-        const nodeAdapter = require("./node").default;
-        return nodeAdapter;
-      } catch {
-        // Node adapter not available, use React Native as fallback
-        const reactNativeAdapter = require("./reactNative").default;
-        return reactNativeAdapter;
-      }
-    }
-
-    const isNode = typeof process !== "undefined" && !!(process as any).versions && !!(process as any).versions.node;
-    if (isNode) {
-      try {
-        const nodeAdapter = require("./node").default;
-        return nodeAdapter;
-      } catch {
-        // Node adapter not available, use React Native as fallback
-        const reactNativeAdapter = require("./reactNative").default;
-        return reactNativeAdapter;
-      }
-    }
-
-    // Check for React Native environment
-    const isRN = (typeof (globalThis as any).navigator !== "undefined" && (globalThis as any).navigator.product === "ReactNative")
-      || !!g.__REACT_NATIVE__
-      || !!g.nativeCallSyncHook;
-    
-    if (isRN) {
-      const reactNativeAdapter = require("./reactNative").default;
-      return reactNativeAdapter;
-    }
-
-    // Default to node in library contexts
-    try {
-      const nodeAdapter = require("./node").default;
-      return nodeAdapter;
-    } catch {
-      // Node not available, use React Native as fallback
-      const reactNativeAdapter = require("./reactNative").default;
-      return reactNativeAdapter;
-    }
-  } catch {
-    // If we can't load node (e.g., in bundled environment), try React Native
-    try {
-      const reactNativeAdapter = require("./reactNative").default;
-      return reactNativeAdapter;
-    } catch {
-      throw new Error("No platform adapter available");
-    }
+    // If we reach here, Node.js modules are available
+    console.log('[MAXIM PLATFORM] Node.js environment detected, loading Node adapter');
+    // Also use eval to hide the node adapter require from static analysis
+    const nodeAdapter = (0, eval)('require')("./node").default;
+    return nodeAdapter;
+  } catch (error) {
+    // Node.js modules not available - we're in React Native or browser environment
+    console.log('[MAXIM PLATFORM] Node.js modules not available, loading React Native adapter');
+    const reactNativeAdapter = require("./reactNative").default;
+    return reactNativeAdapter;
   }
 }
 
