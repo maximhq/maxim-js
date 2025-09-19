@@ -24,6 +24,7 @@ export interface ChatCompletionResult {
 	model: string;
 	choices: Array<ChatCompletionChoice>;
 	usage: Usage;
+	cost?: Cost;
 	error?: GenerationError;
 }
 
@@ -37,6 +38,7 @@ export interface TextCompletionResult {
 	model: string;
 	choices: Array<TextCompletionChoice>;
 	usage: Usage;
+	cost?: Cost;
 	error?: GenerationError;
 }
 
@@ -68,6 +70,15 @@ export interface Usage {
 	prompt_tokens: number;
 	completion_tokens: number;
 	total_tokens: number;
+}
+
+/**
+ * Cost statistics for a generation request.
+ */
+export interface Cost {
+	input: number;
+	output: number;
+	total: number;
 }
 
 /**

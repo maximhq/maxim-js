@@ -18,17 +18,10 @@ import {
 import { CompletionRequestContent } from "../../models/prompt";
 import {
 	LanguageModelV2CallOptions,
-	LanguageModelV2CallWarning,
-	LanguageModelV2Content,
-	LanguageModelV2FinishReason,
 	LanguageModelV2Prompt,
-	LanguageModelV2ResponseMetadata,
 	LanguageModelV2StreamPart,
 	LanguageModelV2ToolCall,
 	LanguageModelV2ToolResultOutput,
-	LanguageModelV2Usage,
-	SharedV2Headers,
-	SharedV2ProviderMetadata,
 	SharedV2ProviderOptions,
 } from "ai-sdk-provider-v2";
 import { DoGenerateResultLike, DoGenerateV2Result } from "./types";
