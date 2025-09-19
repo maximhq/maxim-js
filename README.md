@@ -477,6 +477,11 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.16.0
+
+- **feat**: Added direct cost support in `generation.result`
+  - Added cost tracking capabilities directly in generation results
+
 ### v6.15.0
 
 - **feat**: Added enhanced React Native support
