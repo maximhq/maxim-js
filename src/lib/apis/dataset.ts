@@ -34,7 +34,7 @@ export class MaximDatasetAPI extends MaximAPI {
 				rowNo,
 				columnName: entry.columnName,
 				type: entry.cellValue.type,
-				value: isFile ? [] : entry.cellValue.payload,
+				value: isFile ? { "files": [] } : entry.cellValue.payload,
 			};
 		});
 		const response = await this.fetch<MaximAPIDatasetEntriesResponse>(`/api/sdk/v4/datasets/entries`, {
