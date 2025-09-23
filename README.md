@@ -477,6 +477,11 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.16.1
+
+- **fix**: Changed empty files sent in addDatasetEntries from [] to { "files" : []}
+
+
 ### v6.16.0
 
 - **feat**: Added direct cost support in `generation.result`
