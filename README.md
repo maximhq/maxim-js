@@ -471,11 +471,64 @@ try {
 }
 ```
 
+### OpenAI Agents SDK
+
+Install:
+
+```bash
+npm install @openai/agents
+```
+
+Attach tracing:
+
+```ts
+import { addTraceProcessor } from "@openai/agents";
+import { Maxim } from "@maximai/maxim-js";
+import { MaximOpenAIAgentsProcessor } from "@maximai/maxim-js/openai-agents";
+
+const maxim = new Maxim({ apiKey: process.env.MAXIM_API_KEY! });
+const logger = await maxim.logger({ id: "my-app" });
+
+// Add alongside the default OpenAI exporter
+addTraceProcessor(new MaximOpenAIAgentsProcessor(logger));
+
+// Or replace all processors (disables default OpenAI exporter)
+// setTraceProcessors([new MaximOpenAIAgentsProcessor(logger)]);
+```
+
+Configuration via Agents trace metadata (set on the OpenAI Agents trace):
+
+- `traceId`: string — overrides the Maxim trace id (default: Agent's `traceId`)
+- `traceName`: string — sets the Maxim trace name
+- `traceSessionId`: string — associates the trace to a session
+- `traceTags`: Record<string,string> — tags to add on the trace
+- `traceMetadata`: Record<string,unknown> — metadata to add on the trace
+- `traceMetrics`: Record<string,number> — numeric metrics to add on the trace
+- `traceSpanId`: string — id for the single top-level span
+- `traceSpanName`: string — name for the top-level span
+- `traceSpanTags`: Record<string,string> — tags for the top-level span
+
+Note: only `traceTags`, `traceMetadata`, and `traceMetrics` are read at both onTraceStart and onTraceEnd, the rest is only read at onTraceStart
+
+Behavior:
+
+- One top-level span per trace; all components are nested inside it.
+- Additional nested spans are created only for clear branch boundaries (only `agent` for now).
+- No automatic flush is performed; manage flush/shutdown in your app lifecycle. (i.e., calling `await maxim.cleanup()`)
+- No logging support for types: "speech" | "transcription" | "speech_group"
+
 ### Legacy Langchain Integration
 
 For projects still using our separate package [Maxim Langchain Tracer](https://www.npmjs.com/package/@maximai/maxim-js-langchain) (now deprecated in favor of the built-in tracer above), you can use our built-in tracer as is by just replacing the import and installing `@langchain/core`.
 
 ## Version changelog
+
+### v6.17.0
+
+- feat: OpenAI Agents SDK integration
+- wiring: use `addTraceProcessor(new MaximOpenAIAgentsProcessor(logger))` or `setTraceProcessors([...])`
+- config: pass ids/tags/metadata/metrics via Agents trace metadata: `traceId`, `name`, `sessionId`, `traceTags`, `traceMetadata`, `traceMetrics`, `traceSpanId`, `traceSpanName`, `traceSpanTags`
+- fix: fixes error message being shown as `[object Object]` in certain places
 
 ### v6.16.0
 
@@ -488,7 +541,6 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
   - Introduced a platform adapter that automatically switches between Node.js and React Native implementations as appropriate
   - Ensures seamless integration and feature parity across Node.js and React Native environments
   - No breaking changes for existing Node.js users; React Native projects benefit from optimized platform-specific handling
-
 
 ### v6.14.0
 

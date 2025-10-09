@@ -52,17 +52,11 @@ export * from "./src/lib/utils/csvParser";
 export * from "./src/lib/utils/secureRandom";
 // Additional exports for complete documentation coverage
 export type { MaximLogsAPI } from "./src/lib/apis/logs";
-export type {
-	Attachment,
-	BaseAttachmentProps,
-	FileAttachment,
-	FileDataAttachment,
-	UrlAttachment,
-} from "./src/lib/types";
-export type { MaximAPIDatasetEntriesResponse } from "./src/lib/models/dataset";
 export type { ChatCompletionChoice, Logprobs, TextCompletionChoice, Usage } from "./src/lib/logger/components/generation";
 export { LogWriter } from "./src/lib/logger/writer";
 export type { LogWriterConfig } from "./src/lib/logger/writer";
+export type { MaximAPIDatasetEntriesResponse } from "./src/lib/models/dataset";
 export type { DeploymentVersionDeploymentConfig, VersionSpecificDeploymentConfig } from "./src/lib/models/deployment";
 export type { Folder } from "./src/lib/models/folder";
 export type { AgentResponse, AgentResponseMeta, PromptChain, PromptNode } from "./src/lib/models/promptChain";
+export type { Attachment, BaseAttachmentProps, FileAttachment, FileDataAttachment, UrlAttachment } from "./src/lib/types";
