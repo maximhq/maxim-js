@@ -1080,7 +1080,7 @@ export class MaximLogger {
 	 * // Force flush before critical operation
 	 * logger.flush();
 	 */
-	public flush() {
-		this.writer.flush();
+	public async flush() {
+		await this.writer.flush();
 	}
 }

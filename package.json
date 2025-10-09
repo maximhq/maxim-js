@@ -1,7 +1,7 @@
 {
 	"name": "@maximai/maxim-js",
 	"description": "Maxim AI JS SDK. Visit https://getmaxim.ai for more info.",
-	"version": "6.16.0",
+	"version": "6.17.0",
 	"scripts": {
 		"build": "npx tsc -p tsconfig.lib.json && npm run copy-assets && npm run clean-package",
 		"copy-assets": "copyfiles \"README.md\" \"LICENSE\" dist",
@@ -27,6 +27,7 @@
 		"@langchain/core": "^0.3.0",
 		"@langchain/langgraph": "^0.3.1",
 		"@langchain/openai": "^0.5.12",
+		"@openai/agents": "^0.1.9",
 		"@types/jest": "^29.5.14",
 		"@types/node": "22.15.30",
 		"@typescript-eslint/eslint-plugin": "8.33.1",
@@ -51,8 +52,8 @@
 	},
 	"peerDependencies": {
 		"@types/mime-types": "3.0.1",
-		"mime-types": "3.0.1",
-		"expo-crypto": "^13.0.0"
+		"expo-crypto": "^13.0.0",
+		"mime-types": "3.0.1"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -91,6 +92,11 @@
 			"react-native": "./src/lib/platform/reactNative.js",
 			"types": "./src/lib/platform/adapter.d.ts",
 			"default": "./src/lib/platform/index.js"
+		},
+		"./openai-agents": {
+			"react-native": "./openai-agents.js",
+			"types": "./openai-agents.d.ts",
+			"default": "./openai-agents.js"
 		}
 	},
 	"dependencies": {

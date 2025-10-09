@@ -211,7 +211,14 @@ export class MaximAPI {
 			}
 			// For non-2xx responses that didn't trigger axios errors
 			if (response.data && typeof response.data === "object" && "error" in response.data) {
-				throw response.data.error;
+				const { error } = response.data;
+				if (typeof error === "string") {
+					throw error;
+				}
+				if (error && typeof error === "object" && "message" in error) {
+					throw error.message;
+				}
+				throw JSON.stringify(error, null, 2);
 			}
 			throw response.data;
 		} finally {
