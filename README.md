@@ -523,6 +523,9 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.18.0
+- fix: Fixes trace input updating with AI SDK integration
+
 ### v6.17.0
 
 - feat: OpenAI Agents SDK integration
