@@ -1,4 +1,6 @@
 import type { LanguageModelV2, LanguageModelV2CallOptions, LanguageModelV2StreamPart } from "ai-sdk-provider-v2";
+import { v4 as uuid } from "uuid";
+import { Generation, Session } from "../components";
 import { MaximLogger } from "../logger";
 import {
 	convertDoGenerateResultToChatCompletionResultV2,
@@ -8,8 +10,6 @@ import {
 	parsePromptMessagesV2,
 	processStreamV2,
 } from "./utils";
-import { Generation, Session } from "../components";
-import { v4 as uuid } from "uuid";
 
 export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 	/**
@@ -64,11 +64,34 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 					tags: maximMetadata?.traceTags,
 				});
 
+
+
 		const span = trace.span({
 			id: maximMetadata?.spanId ?? uuid(),
 			name: maximMetadata?.spanName ?? "default-span",
 			tags: maximMetadata?.spanTags,
 		});
+
+		const userMessage = promptMessages.find((msg) => msg.role === "user");
+		
+		const userInput = userMessage?.content;
+		if (userInput) {
+			if (typeof userInput === "string") {
+				trace.input(userInput);
+			} else {
+				const userMessage = userInput[0];
+				switch (userMessage.type) {
+					case "text":
+						trace.input(userMessage.text);
+						break;
+					case "image_url":
+						trace.input(userMessage.image_url.url);
+						break;
+					default:
+						break;
+				}
+			}
+		}
 
 
 		return { maximMetadata, trace, session, span, promptMessages };
