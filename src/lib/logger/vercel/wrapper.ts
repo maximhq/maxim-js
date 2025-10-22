@@ -107,26 +107,6 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 			tags: maximMetadata?.spanTags,
 		});
 
-		const userMessage = promptMessages.find((msg) => msg.role === "user");
-		const userInput = userMessage?.content;
-		if (userInput) {
-			if (typeof userInput === "string") {
-				trace.input(userInput);
-			} else {
-				const userMessage = userInput[0];
-				switch (userMessage.type) {
-					case "text":
-						trace.input(userMessage.text);
-						break;
-					case "image_url":
-						trace.input(userMessage.image_url.url);
-						break;
-					default:
-						break;
-				}
-			}
-		}
-
 		return { maximMetadata, trace, session, span, promptMessages };
 	}
 
