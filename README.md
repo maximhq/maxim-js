@@ -523,6 +523,10 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.19.0
+- fix: Removes trace input setting for AI SDK v1
+- adds test cases for AI SDK v2 wrapper
+
 ### v6.18.0
 - fix: Fixes trace input updating with AI SDK integration
 
