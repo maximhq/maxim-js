@@ -16,6 +16,7 @@ import { QueryRule } from "./models/queryBuilder";
 import { type TestRunBuilder } from "./models/testRun";
 import { createTestRunBuilder } from "./testRun/testRun";
 import { platform } from "./platform";
+import ExpiringKeyValueStore from "./utils/expiringKeyValueStore";
 
 declare global {
 	var __maxim__sdk__instances__: Map<string, Maxim>;
@@ -155,6 +156,7 @@ export class Maxim {
 	private isPromptManagementEnabled: boolean = false;
 	private sync?: Promise<void>;
 	private loggers: Map<string, MaximLogger> = new Map<string, MaximLogger>();
+	private promptVersionByNumberCache: ExpiringKeyValueStore<Prompt> = new ExpiringKeyValueStore<Prompt>();
 	private APIService: {
 		prompt: MaximPromptAPI;
 		promptChain: MaximPromptChainAPI;
@@ -775,6 +777,43 @@ export class Maxim {
 				throw new Error("Prompt Management feature is not enabled. Please enable it in the configuration.");
 			}
 			await this.sync;
+			// Short-circuit: if only condition is promptVersionNumber, fetch exact version with 60s TTL
+			const parsed = parseIncomingQuery(rule.query);
+			if (parsed.length === 1 && parsed[0].field === "promptVersionNumber" && parsed[0].operator === "=") {
+				const num = Number(parsed[0].value);
+				if (isNaN(num)) {
+					throw new Error("Invalid promptVersionNumber value");
+				}
+				const cacheKey = `pvnum:${promptId}:${num}`;
+				const cached = this.promptVersionByNumberCache.get(cacheKey);
+				if (cached) {
+					return cached;
+				}
+				const versionAndRules = await this.APIService.prompt.getPrompt(promptId, num);
+				if (!versionAndRules || versionAndRules.versions.length === 0) {
+					throw new Error(`No active deployments found for Prompt ${promptId}`);
+				}
+				const deployedVersion = versionAndRules.versions.find((v) => v.version === num);
+				if (!deployedVersion) {
+					throw new Error(`No version ${num} found for Prompt ${promptId}`);
+				}
+				const prompt: Prompt = {
+					promptId: deployedVersion.promptId,
+					versionId: deployedVersion.id,
+					version: deployedVersion.version,
+					messages: deployedVersion.config?.messages || [],
+					modelParameters: deployedVersion.config?.modelParameters || {},
+					model: deployedVersion.config?.model || "",
+					deploymentId: deployedVersion.config?.deploymentId,
+					provider: deployedVersion.config?.provider || "",
+					tags: deployedVersion.config?.tags || {},
+					run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => {
+						return this.APIService.prompt.runPromptVersion(deployedVersion.id, input, options);
+					},
+				};
+				this.promptVersionByNumberCache.set(cacheKey, prompt, 60);
+				return prompt;
+			}
 			const key = this.getCacheKey(EntityType.PROMPT, promptId);
 
 			// check if prompt is present in cache

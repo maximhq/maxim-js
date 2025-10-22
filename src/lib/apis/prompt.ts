@@ -13,9 +13,11 @@ export class MaximPromptAPI extends MaximAPI {
 		super(baseUrl, apiKey, isDebug);
 	}
 
-	public async getPrompt(id: string): Promise<PromptVersionsAndRules> {
+	public async getPrompt(id: string, promptVersionNumber?: number): Promise<PromptVersionsAndRules> {
 		return new Promise((resolve, reject) => {
-			this.fetch<MaximApiPromptResponse>(`/api/sdk/v4/prompts?promptId=${id}`)
+			const url =
+				`/api/sdk/v4/prompts?promptId=${id}` + (promptVersionNumber !== undefined ? `&promptVersionNumber=${promptVersionNumber}` : "");
+			this.fetch<MaximApiPromptResponse>(url)
 				.then((response) => {
 					if (response.error) {
 						reject(response.error);

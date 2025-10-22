@@ -523,7 +523,15 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.19.0
+
+- feat: Added support for OpenAI Responses API type in Generation result handling
+- feat: Added TTL-based caching (60s) for prompt version number single-condition fetches
+- feat: Added new `promptVersionNumber()` method in QueryBuilder for convenient version-specific queries
+- chore: Added `openai` package as dev dependency for Responses API type support
+
 ### v6.18.0
+
 - fix: Fixes trace input updating with AI SDK integration
 
 ### v6.17.0

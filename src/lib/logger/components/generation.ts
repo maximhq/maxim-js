@@ -1,7 +1,8 @@
+import type OpenAI from "openai";
 import { ChatCompletionMessage, CompletionRequest, CompletionRequestContent } from "../../models/prompt";
+import type { Attachment } from "../../types";
 import { uniqueId } from "../utils";
 import { LogWriter } from "../writer";
-import type { Attachment } from "../../types";
 import { EvaluatableBaseContainer } from "./base";
 import { Entity } from "./types";
 
@@ -296,7 +297,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 *   usage: { prompt_tokens: 50, completion_tokens: 25, total_tokens: 75 }
 	 * });
 	 */
-	public result(result: TextCompletionResult | ChatCompletionResult) {
+	public result(result: TextCompletionResult | ChatCompletionResult | OpenAI.Responses.Response) {
 		this.commit("result", { result });
 		this.end();
 	}
@@ -309,7 +310,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 * @param result - The completion result
 	 * @returns void
 	 */
-	public static result_(writer: LogWriter, id: string, result: TextCompletionResult | ChatCompletionResult) {
+	public static result_(writer: LogWriter, id: string, result: TextCompletionResult | ChatCompletionResult | OpenAI.Responses.Response) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "result", { result });
 		EvaluatableBaseContainer.end_(writer, Entity.GENERATION, id);
 	}
