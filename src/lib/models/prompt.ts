@@ -234,7 +234,7 @@ export type ToolCallResult = {
  * const content = response.choices[0].message.content;
  * console.log(`Generated: ${content}`);
  * console.log(`Used ${response.usage.totalTokens} tokens`);
- * 
+ *
  * @example
  * // Using the tool call results
  * const toolCallResult = response.toolCallResults?.results[0];
@@ -269,7 +269,7 @@ export type PromptTagValues = {
 
 export type PromptVersionConfig = {
 	id: string;
-	messages: { role: string; content: string }[];
+	messages: (CompletionRequest | ChatCompletionMessage)[];
 	modelParameters: { [key: string]: any };
 	model: string;
 	provider: string;

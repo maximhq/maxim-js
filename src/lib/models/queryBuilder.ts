@@ -218,6 +218,12 @@ export class QueryBuilder {
 		return this;
 	}
 
+	public promptVersionNumber(number: number): QueryBuilder {
+		if (this.query.length > 0) this.query += ",";
+		this.query += `promptVersionNumber=${number}`;
+		return this;
+	}
+
 	/**
 	 * Builds and returns the final QueryRule object.
 	 *
