@@ -7,6 +7,7 @@ import {
 	determineProvider,
 	extractMaximMetadataFromOptions,
 	extractModelParameters,
+	LanguageFirstTokenModel,
 	parsePromptMessages,
 	processStream,
 } from "./utils";
@@ -175,6 +176,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 
 		try {
 			// Calling the original doStream method
+			const startTime = performance.now();
 			const response = await this.model.doStream(options);
 			const modelProvider = determineProvider(this.model.provider);
 			const modelId = this.modelId;
@@ -190,6 +192,10 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 
 			// going through the original stream to collect chunks and pass them without modifications to the stream
 			const chunks: LanguageModelV1StreamPart[] = [];
+			const firstToken: LanguageFirstTokenModel = {
+				received: false,
+				time: null,
+			};
 			const stream = new ReadableStream<LanguageModelV1StreamPart>({
 				async start(controller) {
 					try {
@@ -201,6 +207,14 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 							if (done) {
 								// Stream is done, now process before closing
 								try {
+									if (firstToken.received && firstToken.time) {
+										trace.addMetric("time_to_first_token (in ms)", firstToken.time - startTime);
+										firstToken.received = false;
+										firstToken.time = null;
+									}
+									const endTime = performance.now();
+									const textChunks = chunks.filter((chunk) => chunk.type === "text-delta");
+									trace.addMetric("tokens_per_second", textChunks.length / ((endTime - startTime) / 1000));
 									if (generation) processStream(chunks, span, trace, generation, modelId, maximMetadata);
 								} catch (error) {
 									console.error("[MaximSDK] Processing failed:", error);
@@ -215,6 +229,12 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 								// Now close the stream
 								controller.close();
 								break;
+							}
+
+							// Only mark first token when we receive an actual text-delta chunk
+							if (!firstToken.received && value.type === "text-delta") {
+								firstToken.received = true;
+								firstToken.time = performance.now();
 							}
 
 							// Collect chunk and pass it through

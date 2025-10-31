@@ -608,3 +608,8 @@ function processChunksV2(chunks: LanguageModelV2StreamPart[]) {
 
 	return { text, toolCalls: Object.values(toolCalls), usage, finishReason };
 }
+
+export type LanguageFirstTokenModel = {
+	received: boolean;
+	time: number | null;
+};
