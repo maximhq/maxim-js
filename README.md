@@ -523,6 +523,14 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.19.1
+
+- feat: Added logger-level attachment methods for traces, generations, and spans
+  - Added `logger.traceAddAttachment()` method for adding attachments directly to traces
+  - Added `logger.generationAddAttachment()` method for adding attachments directly to generations
+  - Added `logger.spanAddAttachment()` method for adding attachments directly to spans
+  - These methods complement existing entity-level attachment support, providing more flexibility for programmatic attachment management
+
 ### v6.19.0
 
 - feat: Added support for OpenAI Responses API type in Generation result handling
