@@ -523,6 +523,10 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.20.0
+- feat: Added TTFT and TPS metrics in AI SDK wrappers
+- fix: Fixes input in AI SDK v1 wrapper
+
 ### v6.19.1
 
 - feat: Added logger-level attachment methods for traces, generations, and spans

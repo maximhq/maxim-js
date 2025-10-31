@@ -1,5 +1,5 @@
 import { v4 as uuid } from "uuid";
-import { generateText, generateObject } from "ai";
+import { generateText, generateObject, streamText } from "ai";
 import { google } from "@ai-sdk/google";
 import { z } from "zod/v3";
 import * as dotenv from "dotenv";
@@ -49,6 +49,22 @@ async function generateInitialText(model: any, prompt: string, trace: Trace, spa
 	return rawOutput;
 }
 
+async function streamInitialText(model: any, prompt: string, trace: Trace, spanId: string) {
+	const response = streamText({
+		model,
+		prompt,
+		providerOptions: {
+			maxim: {
+				traceName: "City Prediction",
+				traceId: trace.id,
+				spanId,
+			} as MaximVercelProviderMetadata,
+		},
+	});
+	const result = await response.text;
+	return result;
+}
+
 // Define the schema for our city data
 const CityPredictionSchema = z.object({
 	name: z.string().describe("the name of the city"),
@@ -94,7 +110,6 @@ async function formatOutput(model: any, object: any, trace: Trace) {
 async function main() {
 	const { logger } = await initializeMaxim();
 	try {
-
 		const model = wrapMaximAISDKModel(google("gemini-2.5-flash"), logger);
 
 		const spanId = uuid();
@@ -105,7 +120,7 @@ async function main() {
 		trace.input(prompt);
 
 		// Step 1: Generate initial text response
-		const rawOutput = await generateInitialText(model, prompt, trace, spanId);
+		const rawOutput = await streamInitialText(model, prompt, trace, spanId);
 
 		// Step 2: Extract structured data
 		const structuredData = await extractStructuredData(model, rawOutput, trace, spanId);
