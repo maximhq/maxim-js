@@ -10,6 +10,7 @@ import { Trace, TraceConfig } from "./components/trace";
 import { Entity } from "./components/types";
 import { uniqueId } from "./utils";
 import { LogWriter } from "./writer";
+import { Attachment } from "../types";
 
 /**
  * Configuration object for initializing a MaximLogger instance.
@@ -411,6 +412,24 @@ export class MaximLogger {
 	}
 
 	/**
+	 * Adds an attachment to this trace.
+	 *
+	 * @param traceId - The unique identifier of the trace
+	 * @param attachment - The attachment to add (can be of type file, data, or URL)
+	 * @returns void
+	 * @example
+	 * logger.traceAddAttachment('trace-123',{
+	 *   id: 'input-document',
+	 *   type: 'file',
+	 *   path: './uploads/document.pdf',
+	 *   tags: { category: 'input' }
+	 * });
+	 */
+	public traceAddAttachment(traceId: string, attachment: Attachment) {
+		Trace.addAttachment_(this.writer, traceId, attachment);
+	}
+
+	/**
 	 * Adds a tag to a trace for categorization and filtering.
 	 *
 	 * @param traceId - The unique identifier of the trace
@@ -698,6 +717,24 @@ export class MaximLogger {
 		Generation.end_(this.writer, Entity.GENERATION, generationId, data);
 	}
 
+	/**
+	 * Adds an attachment to this generation.
+	 *
+	 * @param generationId - The unique identifier of the generation
+	 * @param attachment - The attachment to add (can be of type file, data, or URL)
+	 * @returns void
+	 * @example
+	 * logger.generationAddAttachment('gen-123',{
+	 *   id: 'input-document',
+	 *   type: 'file',
+	 *   path: './uploads/document.pdf',
+	 *   tags: { category: 'input' }
+	 * });
+	 */
+	public generationAddAttachment(generationId: string, attachment: Attachment) {
+		return Generation.addAttachment_(this.writer, generationId, attachment);
+	}
+
 	// Span methods
 
 	/**
@@ -883,6 +920,24 @@ export class MaximLogger {
 	 */
 	public spanEnd(spanId: string, data?: any) {
 		return Span.end_(this.writer, Entity.SPAN, spanId, data);
+	}
+
+	/**
+	 * Adds an attachment to this span.
+	 *
+	 * @param spanId - The unique identifier of the span
+	 * @param attachment - The attachment to add (can be of type file, data, or URL)
+	 * @returns void
+	 * @example
+	 * logger.spanAddAttachment('span-123',{
+	 *   id: 'input-document',
+	 *   type: 'file',
+	 *   path: './uploads/document.pdf',
+	 *   tags: { category: 'input' }
+	 * });
+	 */
+	public spanAddAttachment(spanId: string, attachment: Attachment) {
+		return Span.addAttachment_(this.writer, spanId, attachment);
 	}
 
 	// Retrieval methods
