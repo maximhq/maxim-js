@@ -15,6 +15,9 @@ import {
 } from "../models/testRun";
 import { ExtractAPIDataType } from "../utils/utils";
 import { MaximAPI } from "./maxim";
+import type { Variable } from "../models/dataset";
+import { VariableType } from "../models/dataset";
+import type { UrlAttachment } from "../types";
 
 export class MaximTestRunAPI extends MaximAPI {
 	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
@@ -31,6 +34,7 @@ export class MaximTestRunAPI extends MaximAPI {
 		promptVersionId?: string,
 		promptChainVersionId?: string,
 		humanEvaluationConfig?: HumanEvaluationConfig,
+		tags?: string[],
 	): Promise<ExtractAPIDataType<MaximAPICreateTestRunResponse>> {
 		return new Promise((resolve, reject) => {
 			this.fetch<MaximAPICreateTestRunResponse>(`/api/sdk/v2/test-run/create`, {
@@ -49,6 +53,7 @@ export class MaximTestRunAPI extends MaximAPI {
 					promptVersionId,
 					promptChainVersionId,
 					humanEvaluationConfig,
+					tags,
 				}),
 			})
 				.then((response) => {
@@ -115,9 +120,75 @@ export class MaximTestRunAPI extends MaximAPI {
 		});
 	}
 
+	/**
+	 * Checks if a value is already in Variable format.
+	 */
+	private isVariable(value: unknown): value is Variable {
+		return (
+			typeof value === "object" &&
+			value !== null &&
+			"type" in value &&
+			"payload" in value &&
+			(Object.values(VariableType) as string[]).includes(value.type as string)
+		);
+	}
+
+	/**
+	 * Converts dataEntry values from string/string[] to Variable type format.
+	 * - string -> { type: "text", payload: string }
+	 * - string[] -> { type: "file", payload: UrlAttachment[] }
+	 * - null/undefined -> undefined (skipped)
+	 */
+	private convertDataEntryToVariables(
+		dataEntry: Record<string, string | string[] | null | undefined>,
+	): Record<string, Variable | undefined> {
+		const result: Record<string, Variable | undefined> = {};
+
+		for (const [key, value] of Object.entries(dataEntry)) {
+			if (value === null || value === undefined) {
+				// Skip null/undefined values
+				continue;
+			}
+
+			if (Array.isArray(value)) {
+				// Convert string array to FILE Variable with UrlAttachment[]
+				const attachments: UrlAttachment[] = value.map((url, index) => ({
+					type: "url" as const,
+					id: `${key}-${index}`,
+					url: url,
+				}));
+				result[key] = {
+					type: VariableType.FILE,
+					payload: attachments,
+				};
+			} else {
+				// Convert string to TEXT Variable
+				result[key] = {
+					type: VariableType.TEXT,
+					payload: value,
+				};
+			}
+		}
+
+		return result;
+	}
+
 	public async pushTestRunEntry({ testRun, runConfig, entry }: MaximAPITestRunEntryPushPayload): Promise<void> {
+		// Check if dataEntry is already in Variable format, otherwise convert
+		const rawDataEntry = entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>;
+		const dataEntry = Object.values(rawDataEntry).some(
+			(value) => value !== null && value !== undefined && !this.isVariable(value),
+		);
+		const convertedDataEntry = dataEntry
+			? this.convertDataEntryToVariables(rawDataEntry as Record<string, string | string[] | null | undefined>)
+			: (rawDataEntry as Record<string, Variable | undefined>);
+		const convertedEntry = {
+			...entry,
+			dataEntry: convertedDataEntry,
+		};
+
 		return new Promise((resolve, reject) => {
-			this.fetch<MaximAPIResponse>(`/api/sdk/v1/test-run/push`, {
+			this.fetch<MaximAPIResponse>(`/api/sdk/v2/test-run/push`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -126,7 +197,7 @@ export class MaximTestRunAPI extends MaximAPI {
 				body: JSON.stringify({
 					testRun,
 					runConfig,
-					entry,
+					entry: convertedEntry,
 				}),
 			})
 				.then((response) => {
