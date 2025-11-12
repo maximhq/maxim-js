@@ -523,6 +523,9 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.20.1
+- fix: Adds `tool-input-delta` to be recognized as the first chunk
+
 ### v6.20.0
 - feat: Added TTFT and TPS metrics in AI SDK wrappers
 - fix: Fixes input in AI SDK v1 wrapper

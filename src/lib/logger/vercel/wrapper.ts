@@ -213,7 +213,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 										firstToken.time = null;
 									}
 									const endTime = performance.now();
-									const textChunks = chunks.filter((chunk) => chunk.type === "text-delta");
+									const textChunks = chunks.filter((chunk) => chunk.type === "text-delta" || chunk.type === "tool-call-delta");
 									trace.addMetric("tokens_per_second", textChunks.length / ((endTime - startTime) / 1000));
 									if (generation) processStream(chunks, span, trace, generation, modelId, maximMetadata);
 								} catch (error) {
@@ -231,8 +231,8 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 								break;
 							}
 
-							// Only mark first token when we receive an actual text-delta chunk
-							if (!firstToken.received && value.type === "text-delta") {
+							// Only mark first token when we receive an actual text-delta or tool-call-delta chunk
+							if (!firstToken.received && (value.type === "text-delta" || value.type === "tool-call-delta")) {
 								firstToken.received = true;
 								firstToken.time = performance.now();
 							}
