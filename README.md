@@ -524,6 +524,7 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 ## Version changelog
 
 ### v6.21.0
+- fix: Fixes multiple trace issues and same input for tool call executions
 - fix: Uses v2 API for test run entry push
 
 ### v6.20.1
