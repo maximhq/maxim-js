@@ -469,7 +469,9 @@ export function processStream(
 		console.error("[Maxim SDK] Logging failed:", error);
 	} finally {
 		span.end();
-		if (!maximMetadata?.traceId) trace.end();
+		// Note: Trace ending is now handled by the wrapper to support tool-call sequences
+		// Only end trace here if user explicitly provided traceId (they manage it)
+		// Otherwise, the wrapper will handle trace ending based on tool-call detection
 	}
 }
 
@@ -570,7 +572,7 @@ export function processStreamV2(
 		console.error("[Maxim SDK] Logging failed:", error);
 	} finally {
 		span.end();
-		if (!maximMetadata?.traceId) trace.end();
+		// Note: Trace ending is now handled by the wrapper to support tool-call sequences
 	}
 }
 
@@ -591,7 +593,7 @@ function processChunksV2(chunks: LanguageModelV2StreamPart[]) {
 				text += chunk.delta;
 				break;
 			case "tool-call":
-				toolCalls[chunk.toolName] = chunk;
+				toolCalls[chunk.toolCallId] = chunk;
 				break;
 			case "tool-result":
 				text += typeof chunk.result === "string" ? chunk.result : JSON.stringify(chunk.result);

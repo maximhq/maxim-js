@@ -1,6 +1,6 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
-import { generateObject, generateText, streamObject, streamText, tool } from "ai";
+import { generateObject, generateText, streamObject, streamText, stepCountIs, tool } from "ai";
 import { config } from "dotenv";
 import { v4 as uuid } from "uuid";
 import { z } from "zod/v3";
@@ -223,7 +223,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			}
 		}, 20000);
 
-		it("should handle V2 tool calls with proper logging", async () => {
+		it("should handle V2 tool calls with proper logging and execution", async () => {
 			if (!repoId || !openAIKey) {
 				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
 			}
@@ -233,7 +233,6 @@ describe("AI SDK V2 Specification Tests", () => {
 			}
 			
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
-			const traceId = uuid();
 
 			try {
 				const result = await generateText({
@@ -247,6 +246,7 @@ describe("AI SDK V2 Specification Tests", () => {
 								b: z.number().describe("Second number"),
 							}),
 							execute: async ({ operation, a, b }) => {
+								console.log(`[CALCULATOR] Executing ${operation}(${a}, ${b})`);
 								switch (operation) {
 									case "add":
 										return { result: a + b };
@@ -265,21 +265,332 @@ describe("AI SDK V2 Specification Tests", () => {
 					prompt: "Calculate 15 multiplied by 8, then add 25 to the result.",
 					providerOptions: {
 						maxim: {
-							traceId: traceId,
-							traceName: "V2 Tool Call Test",
+							traceName: "V2 Tool Call Test - Single Execution",
 							generationName: "Calculator Operations",
 							generationTags: {
 								tool_usage: "calculator",
 								specification: "v2",
+								test_type: "single_tool_execution",
 							},
 						} as MaximVercelProviderMetadata,
 					},
+					stopWhen: stepCountIs(5),
 				});
 				
 				console.log("OpenAI V2 tool call result", result.text);
+				console.log("Tool calls executed:", result.toolCalls?.length || 0);
 				expect(result.text).toBeDefined();
+				expect(result.toolCalls).toBeDefined();
+				expect(result.toolCalls?.length).toBeGreaterThan(0);
 			} catch (error) {
 				console.error("Error in V2 tool call:", error);
+				throw error;
+			}
+		}, 20000);
+
+		it("should handle V2 multiple sequential tool calls in one trace", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+			if (!logger) {
+				throw new Error("Logger is not available");
+			}
+			
+			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
+
+			try {
+				const result = await generateText({
+					model: model,
+					tools: {
+						calculator: tool({
+							description: "Perform basic arithmetic operations",
+							inputSchema: z.object({
+								operation: z.enum(["add", "subtract", "multiply", "divide"]),
+								a: z.number().describe("First number"),
+								b: z.number().describe("Second number"),
+							}),
+							execute: async ({ operation, a, b }) => {
+								console.log(`[CALCULATOR] Executing ${operation}(${a}, ${b})`);
+								switch (operation) {
+									case "add":
+										return { result: a + b };
+									case "subtract":
+										return { result: a - b };
+									case "multiply":
+										return { result: a * b };
+									case "divide":
+										return { result: b !== 0 ? a / b : "Cannot divide by zero" };
+									default:
+										return { result: "Invalid operation" };
+								}
+							},
+						}),
+						getWeather: tool({
+							description: "Get current weather information for a city",
+							inputSchema: z.object({
+								city: z.string().describe("Name of the city"),
+								unit: z.enum(["celsius", "fahrenheit"]).describe("Temperature unit"),
+							}),
+							execute: async ({ city, unit }) => {
+								console.log(`[WEATHER] Getting weather for ${city} in ${unit}`);
+								return {
+									city,
+									temperature: unit === "celsius" ? 22 : 72,
+									unit,
+									condition: "sunny",
+									humidity: 65,
+								};
+							},
+						}),
+					},
+					prompt: "What's 10 + 5? Also, what's the weather in New York? Use Celsius.",
+					providerOptions: {
+						maxim: {
+							traceName: "V2 Multiple Tool Calls Test",
+							generationName: "Multi-Tool Operations",
+							generationTags: {
+								tool_usage: "calculator,weather",
+								specification: "v2",
+								test_type: "multiple_tools",
+							},
+						} as MaximVercelProviderMetadata,
+					},
+					stopWhen: stepCountIs(5),
+				});
+				
+				console.log("OpenAI V2 multiple tool calls result", result.text);
+				console.log("Tool calls executed:", result.toolCalls?.length || 0);
+				expect(result.text).toBeDefined();
+				expect(result.toolCalls).toBeDefined();
+				expect(result.toolCalls?.length).toBeGreaterThanOrEqual(2);
+			} catch (error) {
+				console.error("Error in V2 multiple tool calls:", error);
+				throw error;
+			}
+		}, 20000);
+
+		it("should handle V2 streaming tool calls with execution", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+			if (!logger) {
+				throw new Error("Logger is not available");
+			}
+			
+			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
+
+			try {
+				const result = streamText({
+					model: model,
+					tools: {
+						calculator: tool({
+							description: "Perform basic arithmetic operations",
+							inputSchema: z.object({
+								operation: z.enum(["add", "subtract", "multiply", "divide"]),
+								a: z.number().describe("First number"),
+								b: z.number().describe("Second number"),
+							}),
+							execute: async ({ operation, a, b }) => {
+								console.log(`[CALCULATOR STREAM] Executing ${operation}(${a}, ${b})`);
+								switch (operation) {
+									case "add":
+										return { result: a + b };
+									case "subtract":
+										return { result: a - b };
+									case "multiply":
+										return { result: a * b };
+									case "divide":
+										return { result: b !== 0 ? a / b : "Cannot divide by zero" };
+									default:
+										return { result: "Invalid operation" };
+								}
+							},
+						}),
+					},
+					prompt: "Calculate 20 multiplied by 3, then subtract 10 from the result.",
+					providerOptions: {
+						maxim: {
+							traceName: "V2 Streaming Tool Call Test",
+							generationName: "Stream Calculator Operations",
+							generationTags: {
+								tool_usage: "calculator",
+								specification: "v2",
+								test_type: "streaming_tool_execution",
+							},
+						} as MaximVercelProviderMetadata,
+					},
+					stopWhen: stepCountIs(5),
+				});
+				
+				const text = await result.text;
+				const toolCalls = await result.toolCalls;
+				console.log("OpenAI V2 streaming tool call result", text);
+				console.log("Tool calls executed:", toolCalls?.length || 0);
+				expect(text).toBeDefined();
+				expect(toolCalls).toBeDefined();
+				expect(toolCalls?.length).toBeGreaterThan(0);
+			} catch (error) {
+				console.error("Error in V2 streaming tool call:", error);
+				throw error;
+			}
+		}, 20000);
+
+		it("should handle V2 complex multi-step tool execution", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+			if (!logger) {
+				throw new Error("Logger is not available");
+			}
+			
+			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
+
+			try {
+				const result = await generateText({
+					model: model,
+					tools: {
+						calculator: tool({
+							description: "Perform basic arithmetic operations",
+							inputSchema: z.object({
+								operation: z.enum(["add", "subtract", "multiply", "divide"]),
+								a: z.number().describe("First number"),
+								b: z.number().describe("Second number"),
+							}),
+							execute: async ({ operation, a, b }) => {
+								console.log(`[CALCULATOR] Executing ${operation}(${a}, ${b})`);
+								switch (operation) {
+									case "add":
+										return { result: a + b };
+									case "subtract":
+										return { result: a - b };
+									case "multiply":
+										return { result: a * b };
+									case "divide":
+										return { result: b !== 0 ? a / b : "Cannot divide by zero" };
+									default:
+										return { result: "Invalid operation" };
+								}
+							},
+						}),
+						getWeather: tool({
+							description: "Get current weather information for a city",
+							inputSchema: z.object({
+								city: z.string().describe("Name of the city"),
+								unit: z.enum(["celsius", "fahrenheit"]).describe("Temperature unit"),
+							}),
+							execute: async ({ city, unit }) => {
+								console.log(`[WEATHER] Getting weather for ${city} in ${unit}`);
+								return {
+									city,
+									temperature: unit === "celsius" ? 22 : 72,
+									unit,
+									condition: "sunny",
+									humidity: 65,
+								};
+							},
+						}),
+					},
+					prompt: "Calculate 15 multiplied by 8, then add 25 to the result. After that, tell me the weather in San Francisco in Celsius.",
+					providerOptions: {
+						maxim: {
+							traceName: "V2 Complex Multi-Step Tool Execution",
+							generationName: "Complex Tool Operations",
+							generationTags: {
+								tool_usage: "calculator,weather",
+								specification: "v2",
+								test_type: "complex_multi_step",
+							},
+						} as MaximVercelProviderMetadata,
+					},
+					stopWhen: stepCountIs(10),
+				});
+				
+				console.log("OpenAI V2 complex tool execution result", result.text);
+				console.log("Tool calls executed:", result.toolCalls?.length || 0);
+				if (result.toolCalls && result.toolCalls.length > 0) {
+					result.toolCalls.forEach((tc, idx) => {
+						console.log(`  Tool Call ${idx + 1}:`, tc.toolName, JSON.stringify(tc));
+					});
+				}
+				expect(result.text).toBeDefined();
+				expect(result.toolCalls).toBeDefined();
+			} catch (error) {
+				console.error("Error in V2 complex tool execution:", error);
+				throw error;
+			}
+		}, 30000);
+
+		it("should handle V2 tool calls with session context", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+			if (!logger) {
+				throw new Error("Logger is not available");
+			}
+			
+			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
+			const sessionId = uuid();
+
+			try {
+				const result = await generateText({
+					model: model,
+					tools: {
+						calculator: tool({
+							description: "Perform basic arithmetic operations",
+							inputSchema: z.object({
+								operation: z.enum(["add", "subtract", "multiply", "divide"]),
+								a: z.number().describe("First number"),
+								b: z.number().describe("Second number"),
+							}),
+							execute: async ({ operation, a, b }) => {
+								console.log(`[CALCULATOR SESSION] Executing ${operation}(${a}, ${b})`);
+								switch (operation) {
+									case "add":
+										return { result: a + b };
+									case "subtract":
+										return { result: a - b };
+									case "multiply":
+										return { result: a * b };
+									case "divide":
+										return { result: b !== 0 ? a / b : "Cannot divide by zero" };
+									default:
+										return { result: "Invalid operation" };
+								}
+							},
+						}),
+					},
+					prompt: "Calculate 100 divided by 4, then multiply the result by 3.",
+					providerOptions: {
+						maxim: {
+							sessionId: sessionId,
+							sessionName: "V2 Tool Call Session Test",
+							traceName: "Session Tool Execution",
+							generationName: "Session Calculator Operations",
+							sessionTags: {
+								test_type: "tool_call_session",
+								specification: "v2",
+							},
+							generationTags: {
+								tool_usage: "calculator",
+								specification: "v2",
+								test_type: "session_tool_execution",
+							},
+						} as MaximVercelProviderMetadata,
+					},
+					stopWhen: stepCountIs(5),
+				});
+				
+				console.log("OpenAI V2 session tool call result", result.text);
+				console.log("Tool calls executed:", result.toolCalls?.length || 0);
+				expect(result.text).toBeDefined();
+				expect(result.toolCalls).toBeDefined();
+				expect(result.toolCalls?.length).toBeGreaterThan(0);
+			} catch (error) {
+				console.error("Error in V2 session tool call:", error);
 				throw error;
 			}
 		}, 20000);

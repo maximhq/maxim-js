@@ -11,8 +11,9 @@ import {
 	parsePromptMessages,
 	processStream,
 } from "./utils";
-import { Generation, Session } from "../components";
+import { Generation, Session, Trace } from "../components";
 import { MaximAISDKWrapperV2 } from "./wrapperV2";
+import { ChatCompletionMessage, CompletionRequest } from "src/lib/models/prompt";
 
 /**
  * Wraps a Vercel AI SDK language model with Maxim logging and tracing capabilities.
@@ -50,6 +51,12 @@ export function wrapMaximAISDKModel<T extends LanguageModelV1 | LanguageModelV2>
  * @param logger - The MaximLogger instance to use for tracing and logging.
  */
 class MaximAISDKWrapper implements LanguageModelV1 {
+	// Internal state to track trace across multiple doGenerate calls in a tool-call sequence
+	private currentTraceId: string | null = null;
+	private currentTrace: Trace | null = null;
+	private currentSession: Session | null = null;
+	private isInToolCallSequence: boolean = false;
+
 	/**
 	 * @constructor
 	 * Creates a new MaximAISDKWrapper instance.
@@ -70,37 +77,71 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 *
 	 * @private
 	 * @param options - The call options for the model invocation.
+	 * @param promptMessages - The parsed prompt messages (used to detect tool calls).
 	 * @returns An object containing maximMetadata, trace, session, span, and promptMessages.
 	 */
-	private setupLogging(options: LanguageModelV1CallOptions) {
+	private setupLogging(options: LanguageModelV1CallOptions, promptMessages: Array<CompletionRequest | ChatCompletionMessage>) {
 		// Extracting the maxim object from `providerOptions`
 		const maximMetadata = extractMaximMetadataFromOptions(options.providerMetadata);
 
-		// Parsing the ai-sdk prompt messages to maxim prompt messages
-		const promptMessages = parsePromptMessages(options.prompt);
+		// Check if this is a continuation of a tool-call sequence (has tool results in prompt)
+		const hasToolResults = promptMessages.some((msg) => msg.role === "tool");
+
+		// Determine if we should reuse the existing trace or create a new one
+		const shouldReuseTrace =
+			!maximMetadata?.traceId && // User hasn't explicitly provided a traceId
+			this.isInToolCallSequence && // We're in a tool-call sequence
+			hasToolResults && // This call has tool results (continuation)
+			this.currentTraceId !== null; // We have an existing trace
+
 		let session: Session | undefined = undefined;
+		let trace: Trace;
 
 		// If sessionId is passed, then create a session on Maxim. If not passed, do not create a session
 		if (maximMetadata?.sessionId) {
-			session = this.logger.session({
-				id: maximMetadata.sessionId,
-				name: maximMetadata.sessionName ?? "default-session",
-				tags: maximMetadata.sessionTags,
-			});
+			// Reuse existing session if it's the same sessionId, otherwise create new
+			if (this.currentSession?.id === maximMetadata.sessionId) {
+				session = this.currentSession;
+			} else {
+				session = this.logger.session({
+					id: maximMetadata.sessionId,
+					name: maximMetadata.sessionName ?? "default-session",
+					tags: maximMetadata.sessionTags,
+				});
+				this.currentSession = session;
+			}
 		}
 
-		// If the user passes in a traceId, we push to the existing trace or else we create a new trace
-		const trace = session
-			? session.trace({
-					id: maximMetadata?.traceId ?? uuid(),
-					name: maximMetadata?.traceName ?? "default-trace",
-					tags: maximMetadata?.traceTags,
-				})
-			: this.logger.trace({
-					id: maximMetadata?.traceId ?? uuid(),
-					name: maximMetadata?.traceName ?? "default-trace",
-					tags: maximMetadata?.traceTags,
-				});
+		// Determine trace ID: use user-provided, reuse existing, or create new
+		const traceId = maximMetadata?.traceId ?? (shouldReuseTrace ? this.currentTraceId! : uuid());
+		const traceName = maximMetadata?.traceName ?? "default-trace";
+
+		// Reuse existing trace if we're continuing a tool-call sequence
+		if (shouldReuseTrace && this.currentTrace) {
+			trace = this.currentTrace;
+		} else {
+			// Create new trace
+			trace = session
+				? session.trace({
+						id: traceId,
+						name: traceName,
+						tags: maximMetadata?.traceTags,
+					})
+				: this.logger.trace({
+						id: traceId,
+						name: traceName,
+						tags: maximMetadata?.traceTags,
+					});
+
+			// Store trace state for reuse
+			this.currentTraceId = traceId;
+			this.currentTrace = trace;
+		}
+
+		// If this is the start of a new sequence (no tool results), reset the tool-call sequence flag
+		if (!hasToolResults && !maximMetadata?.traceId) {
+			this.isInToolCallSequence = false;
+		}
 
 		const span = trace.span({
 			id: maximMetadata?.spanId ?? uuid(),
@@ -121,8 +162,12 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 * @returns The result of the underlying model's doGenerate call.
 	 */
 	async doGenerate(options: LanguageModelV1CallOptions) {
-		const { maximMetadata, trace, span, promptMessages } = this.setupLogging(options);
+		// Parse prompt messages first to detect tool calls
+		const promptMessages = parsePromptMessages(options.prompt);
+		const { maximMetadata, trace, span } = this.setupLogging(options, promptMessages);
 		let generation: Generation | undefined = undefined;
+		let response: Awaited<ReturnType<LanguageModelV1["doGenerate"]>> | undefined = undefined;
+		let hasToolCallsInResponse = false;
 
 		try {
 			generation = span.generation({
@@ -135,8 +180,31 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 				tags: maximMetadata?.generationTags,
 			});
 
+			if (promptMessages.length > 0) {
+				const toolCalls = promptMessages.filter((msg) => msg.role === "tool");
+				for (const toolCall of toolCalls) {
+					const tc = toolCall as unknown as CompletionRequest;
+					if (tc.tool_call_id && typeof tc.content === "string") {
+						this.logger.toolCallResult(tc.tool_call_id, tc.content);
+					}
+				}
+			}
+
 			// Calling the original doGenerate function
-			const response = await this.model.doGenerate(options);
+			response = await this.model.doGenerate(options);
+
+			// Check if response has tool calls - in v1, tool calls are in rawResponse.body.choices
+			const choices = (response.rawResponse as any)?.body?.choices ?? [];
+			if (Array.isArray(choices)) {
+				hasToolCallsInResponse = choices.some(
+					(choice: any) => choice.message?.tool_calls && Array.isArray(choice.message.tool_calls) && choice.message.tool_calls.length > 0,
+				);
+			}
+
+			if (hasToolCallsInResponse) {
+				// Mark that we're in a tool-call sequence
+				this.isInToolCallSequence = true;
+			}
 
 			const res = convertDoGenerateResultToChatCompletionResult(response);
 			generation.result(res);
@@ -157,7 +225,21 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 			throw error;
 		} finally {
 			span.end();
-			if (!maximMetadata?.traceId) trace.end();
+
+			// End trace if:
+			// 1. User explicitly provided traceId (they manage it) - but don't reset state
+			// 2. OR response has no tool calls (sequence is complete or single call)
+			const shouldEndTrace = maximMetadata?.traceId || !hasToolCallsInResponse;
+
+			if (shouldEndTrace) {
+				// Reset state when ending trace (only if user didn't provide traceId)
+				if (!maximMetadata?.traceId) {
+					this.currentTraceId = null;
+					this.currentTrace = null;
+					this.isInToolCallSequence = false;
+					trace.end();
+				}
+			}
 		}
 	}
 
@@ -171,8 +253,13 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 * @returns The result of the underlying model's doStream call, with a wrapped stream.
 	 */
 	async doStream(options: LanguageModelV1CallOptions) {
-		const { maximMetadata, trace, span, promptMessages } = this.setupLogging(options);
+		// Parse prompt messages first to detect tool calls
+		const promptMessages = parsePromptMessages(options.prompt);
+		const { maximMetadata, trace, span } = this.setupLogging(options, promptMessages);
 		let generation: Generation | undefined = undefined;
+		let hasToolCallsInResponse = false;
+		// Capture 'this' reference for use inside the stream
+		const wrapperInstance = this;
 
 		try {
 			// Calling the original doStream method
@@ -207,6 +294,14 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 							if (done) {
 								// Stream is done, now process before closing
 								try {
+									// Check if we have tool calls in the stream
+									hasToolCallsInResponse = chunks.some((chunk) => chunk.type === "tool-call" || chunk.type === "tool-call-delta");
+
+									if (hasToolCallsInResponse) {
+										// Mark that we're in a tool-call sequence
+										wrapperInstance.isInToolCallSequence = true;
+									}
+
 									if (firstToken.received && firstToken.time) {
 										trace.addMetric("time_to_first_token (in ms)", firstToken.time - startTime);
 										firstToken.received = false;
@@ -216,6 +311,32 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 									const textChunks = chunks.filter((chunk) => chunk.type === "text-delta" || chunk.type === "tool-call-delta");
 									trace.addMetric("tokens_per_second", textChunks.length / ((endTime - startTime) / 1000));
 									if (generation) processStream(chunks, span, trace, generation, modelId, maximMetadata);
+
+									if (promptMessages.length > 0) {
+										const toolCalls = promptMessages.filter((msg) => msg.role === "tool");
+										for (const toolCall of toolCalls) {
+											const tc = toolCall as unknown as CompletionRequest;
+											if (tc.tool_call_id && typeof tc.content === "string") {
+												wrapperInstance.logger.toolCallResult(tc.tool_call_id, tc.content);
+											}
+										}
+									}
+
+									// Handle trace ending after stream processing
+									// End trace if:
+									// 1. User explicitly provided traceId (they manage it) - but don't reset state
+									// 2. OR response has no tool calls (sequence is complete or single call)
+									const shouldEndTrace = maximMetadata?.traceId || !hasToolCallsInResponse;
+
+									if (shouldEndTrace) {
+										// Reset state when ending trace (only if user didn't provide traceId)
+										if (!maximMetadata?.traceId) {
+											wrapperInstance.currentTraceId = null;
+											wrapperInstance.currentTrace = null;
+											wrapperInstance.isInToolCallSequence = false;
+											trace.end();
+										}
+									}
 								} catch (error) {
 									console.error("[MaximSDK] Processing failed:", error);
 									if (generation) {
@@ -271,8 +392,9 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 
 			throw error;
 		} finally {
-			span.end();
-			if (!maximMetadata?.traceId) trace.end();
+			// Note: For streaming, span ending happens in processStream, and trace ending
+			// is handled in the stream completion handler above (because hasToolCallsInResponse
+			// is set asynchronously). We don't end the trace here.
 		}
 	}
 
