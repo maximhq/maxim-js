@@ -56,6 +56,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 	withLogger: (logger) => createTestRunBuilder({ ...config, logger }),
 	getConfig: () => config,
 	withConcurrency: (concurrency) => createTestRunBuilder({ ...config, concurrency }),
+	withTags: (tags) => createTestRunBuilder({ ...config, tags }),
 	run: async (timeoutInMinutes = 15) => {
 		let errors: string[] = [];
 		const logger = config.logger ?? new DefaultLogger();
@@ -123,6 +124,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 		const promptVersion = config.promptVersion;
 		const promptChainVersion = config.promptChainVersion;
 		const workflow = config.workflow;
+		const tags = config.tags;
 		const failedEntryIndices: number[] = [];
 		const localEvaluatorNameToIdAndPassFailCriteriaMap = getLocalEvaluatorNameToIdAndPassFailCriteriaMap(evaluators);
 
@@ -334,6 +336,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				promptVersion?.id,
 				promptChainVersion?.id,
 				humanEvaluationConfig,
+				tags,
 			);
 
 			try {

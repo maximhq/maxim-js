@@ -523,6 +523,9 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.21.0
+- fix: Uses v2 API for test run entry push
+
 ### v6.20.1
 - fix: Adds `tool-input-delta` to be recognized as the first chunk
 

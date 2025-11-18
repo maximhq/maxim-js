@@ -1,4 +1,4 @@
-import type { Data, DataStructure, DataValue } from "../models/dataset";
+import type { Data, DataStructure, DataValue, Variable } from "../models/dataset";
 import type {
 	CombinedLocalEvaluatorType,
 	HumanEvaluationConfig,
@@ -289,6 +289,7 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 	};
 	logger?: TestRunLogger<T>;
 	concurrency?: number;
+	tags?: string[];
 };
 
 export type TestRunBuilder<T extends DataStructure | undefined = undefined> = {
@@ -548,6 +549,15 @@ export type TestRunBuilder<T extends DataStructure | undefined = undefined> = {
 	 *     .withConcurrency(10); // defaults to 10
 	 */
 	withConcurrency: (concurrency: TestRunConfig<T>["concurrency"]) => TestRunBuilder<T>;
+	
+	/**
+	 * @returns The TestRunBuilder with the tags set.
+	 * @example
+	 * maxim
+	 *     .createTestRun("name", "workspaceId")
+	 *     .withTags(["tag1", "tag2"]);
+	 */
+	withTags: (tags: string[]) => TestRunBuilder<T>;
 
 	/**
 	 * Gets the current TestRunConfig.
@@ -658,7 +668,7 @@ export type MaximAPITestRunEntry = {
 	expectedOutput?: string;
 	contextToEvaluate?: string | string[];
 	output?: string;
-	dataEntry: Record<string, string | string[] | null | undefined>;
+	dataEntry: Record<string, string | string[] | Variable | null | undefined>;
 	localEvaluationResults?: (LocalEvaluationResult & { id: string })[];
 };
 
