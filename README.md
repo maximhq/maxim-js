@@ -523,6 +523,9 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.22.0
+- fix: Fixes AI SDK multiple traces showing same input for session conversations
+
 ### v6.21.0
 - fix: Fixes multiple trace issues and same input for tool call executions
 - fix: Uses v2 API for test run entry push

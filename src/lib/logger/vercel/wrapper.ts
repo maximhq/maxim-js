@@ -143,6 +143,31 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 			this.isInToolCallSequence = false;
 		}
 
+		const userMessage = promptMessages.findLast((msg) => msg.role === "user");
+		if (userMessage && userMessage.content) {
+			const userInput = userMessage.content;
+			if (typeof userInput === "string") {
+				trace.input(userInput);
+			} else {
+				const userMessageContent = userInput[0];
+				switch (userMessageContent.type) {
+					case "text":
+						trace.input(userMessageContent.text);
+						break;
+					case "image_url":
+						trace.input(userMessageContent.image_url.url);
+						trace.addAttachment({
+							id: uuid(),
+							type: "url",
+							url: userMessageContent.image_url.url,
+						});
+						break;
+					default:
+						break;
+				}
+			}
+		}
+
 		const span = trace.span({
 			id: maximMetadata?.spanId ?? uuid(),
 			name: maximMetadata?.spanName ?? "default-span",
