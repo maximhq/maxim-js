@@ -11,7 +11,7 @@ import {
 } from "./utils";
 import { Generation, Session, Trace } from "../components";
 import { v4 as uuid } from "uuid";
-import { ChatCompletionMessage, CompletionRequest } from "src/lib/models/prompt";
+import { ChatCompletionMessage, CompletionRequest, CompletionRequestContent } from "src/lib/models/prompt";
 
 export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 	// Internal state to track trace across multiple doGenerate calls in a tool-call sequence
@@ -112,6 +112,31 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 			tags: maximMetadata?.spanTags,
 		});
 
+		const userMessage = promptMessages.findLast((msg) => msg.role === "user");
+		if (userMessage && userMessage.content) {
+			const userInput = userMessage.content;
+			if (typeof userInput === "string") {
+				trace.input(userInput);
+			} else {
+				const userMessageContent = userInput[0];
+				switch (userMessageContent.type) {
+					case "text":
+						trace.input(userMessageContent.text);
+						break;
+					case "image_url":
+						trace.input(userMessageContent.image_url.url);
+						trace.addAttachment({
+							id: uuid(),
+							type: "url",
+							url: userMessageContent.image_url.url,
+						});
+						break;
+					default:
+						break;
+				}
+			}
+		}
+
 		return { maximMetadata, trace, session, span, promptMessages };
 	}
 
@@ -131,7 +156,7 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 		let generation: Generation | undefined = undefined;
 		let response: Awaited<ReturnType<LanguageModelV2["doGenerate"]>> | undefined = undefined;
 		let hasToolCallsInResponse = false;
-
+		
 		try {
 			generation = span.generation({
 				id: uuid(),
@@ -368,9 +393,20 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 
 			throw error;
 		} finally {
-			// Note: For streaming, span ending happens in processStreamV2, and trace ending
-			// is handled in the stream completion handler above (because hasToolCallsInResponse
-			// is set asynchronously). We don't end the trace here.
+			// End trace if:
+			// 1. User explicitly provided traceId (they manage it) - but don't reset state
+			// 2. OR response has no tool calls (sequence is complete or single call)
+			const shouldEndTrace = maximMetadata?.traceId || !hasToolCallsInResponse;
+
+			if (shouldEndTrace) {
+				// Reset state when ending trace (only if user didn't provide traceId)
+				if (!maximMetadata?.traceId) {
+					this.currentTraceId = null;
+					this.currentTrace = null;
+					this.isInToolCallSequence = false;
+					trace.end();
+				}
+			}
 		}
 	}
 
