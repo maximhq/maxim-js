@@ -523,6 +523,9 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.23.0
+- feat: Added support for simulationConfig in workflow and prompt test runs, enabling simulation runs
+
 ### v6.22.0
 - fix: Fixes AI SDK multiple traces showing same input for session conversations
 

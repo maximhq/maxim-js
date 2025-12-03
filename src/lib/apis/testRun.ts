@@ -35,6 +35,20 @@ export class MaximTestRunAPI extends MaximAPI {
 		promptChainVersionId?: string,
 		humanEvaluationConfig?: HumanEvaluationConfig,
 		tags?: string[],
+		simulationConfig?: {
+			scenario?: string;
+			persona?: string | { type: "DATASET_COLUMN"; payload: string };
+			maxTurns?: number;
+			tools?: string[];
+			context?: {
+				docs?: {
+					type: "DATASOURCE";
+					dataSourceIds: string[];
+				};
+			};
+			responseFields?: string[];
+			environmentId?: string;
+		},
 	): Promise<ExtractAPIDataType<MaximAPICreateTestRunResponse>> {
 		return new Promise((resolve, reject) => {
 			this.fetch<MaximAPICreateTestRunResponse>(`/api/sdk/v2/test-run/create`, {
@@ -54,6 +68,7 @@ export class MaximTestRunAPI extends MaximAPI {
 					promptChainVersionId,
 					humanEvaluationConfig,
 					tags,
+					simulationConfig,
 				}),
 			})
 				.then((response) => {

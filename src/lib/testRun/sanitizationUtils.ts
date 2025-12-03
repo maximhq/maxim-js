@@ -42,6 +42,16 @@ export function sanitizeData<U extends DataStructure | undefined>(dataToSanitize
 								throw new Error(`Nullable variable column "${key}" has a data entry which is not null, a string or an array`, {
 									cause: JSON.stringify({ dataEntry: entry }, null, 2),
 								});
+						} else if (againstDataStructure[key] === "SCENARIO") {
+							if (typeof value !== "string")
+								throw new Error(`Scenario column "${key}" has a data entry which is not a string`, {
+									cause: JSON.stringify({ dataEntry: entry }, null, 2),
+								});
+						} else if (againstDataStructure[key] === "EXPECTED_STEPS") {
+							if (typeof value !== "string")
+								throw new Error(`Expected steps column "${key}" has a data entry which is not a string`, {
+									cause: JSON.stringify({ dataEntry: entry }, null, 2),
+								});
 						} else {
 							throw new Error(`Unknown column type "${againstDataStructure[key]}" for column "${key}"`, {
 								cause: JSON.stringify({ dataStructure: againstDataStructure, dataEntry: entry }, null, 2),

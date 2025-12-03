@@ -86,7 +86,7 @@ export type MaximAPIDatasetResponse =
 
 export type MaximAPIDatasetStructureResponse =
 	| {
-			data: Record<string, "INPUT" | "EXPECTED_OUTPUT" | "VARIABLE">;
+			data: Record<string, "INPUT" | "EXPECTED_OUTPUT" | "VARIABLE" | "SCENARIO" | "EXPECTED_STEPS">;
 	  }
 	| {
 			error: {
@@ -128,10 +128,18 @@ export type ContextToEvaluateColumn = "CONTEXT_TO_EVALUATE";
 export type VariableColumn = "VARIABLE";
 export type NullableVariableColumn = "NULLABLE_VARIABLE";
 export type OutputColumn = "OUTPUT";
+export type ScenarioColumn = "SCENARIO";
+export type ExpectedStepsColumn = "EXPECTED_STEPS";
 
 export type DataStructure = Record<
 	string,
-	InputColumn | ExpectedOutputColumn | ContextToEvaluateColumn | VariableColumn | NullableVariableColumn
+	| InputColumn
+	| ExpectedOutputColumn
+	| ContextToEvaluateColumn
+	| VariableColumn
+	| NullableVariableColumn
+	| ScenarioColumn
+	| ExpectedStepsColumn
 >;
 
 export type MapDataStructureToValue<T> = T extends InputColumn
@@ -140,11 +148,15 @@ export type MapDataStructureToValue<T> = T extends InputColumn
 		? string
 		: T extends ContextToEvaluateColumn
 			? string | string[]
-			: T extends VariableColumn
-				? string | string[]
-				: T extends NullableVariableColumn
-					? string | string[] | undefined | null
-					: never;
+			: T extends ScenarioColumn
+				? string
+				: T extends ExpectedStepsColumn
+					? string
+					: T extends VariableColumn
+						? string | string[]
+						: T extends NullableVariableColumn
+							? string | string[] | undefined | null
+							: never;
 
 /**
  * Type representing a data entry that conforms to a specific data structure.
