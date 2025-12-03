@@ -13,9 +13,11 @@ export type {
 	DataStructure,
 	DataValue,
 	ExpectedOutputColumn,
+	ExpectedStepsColumn,
 	InputColumn,
 	MapDataStructureToValue,
 	NullableVariableColumn,
+	ScenarioColumn,
 	Variable,
 	VariableColumn,
 } from "./src/lib/models/dataset";

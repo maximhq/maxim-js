@@ -52,6 +52,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 	withPromptVersionId: (id, contextToEvaluate) => createTestRunBuilder({ ...config, promptVersion: { id, contextToEvaluate } }),
 	withPromptChainVersionId: (id, contextToEvaluate) => createTestRunBuilder({ ...config, promptChainVersion: { id, contextToEvaluate } }),
 	withWorkflowId: (id, contextToEvaluate) => createTestRunBuilder({ ...config, workflow: { id, contextToEvaluate } }),
+	withSimulationConfig: (simulationConfig) => createTestRunBuilder({ ...config, simulationConfig }),
 	yieldsOutput: (outputFunction) => createTestRunBuilder({ ...config, outputFunction }),
 	withLogger: (logger) => createTestRunBuilder({ ...config, logger }),
 	getConfig: () => config,
@@ -83,6 +84,26 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 		if (!config.data) {
 			errors.push("Data or dataset id is required to run a test.");
 		}
+		if (config.simulationConfig) {
+			if (config.outputFunction) {
+				errors.push("Simulation config cannot be used with yieldsOutput. Use withWorkflowId or withPromptVersionId instead.");
+			}
+			if (config.promptChainVersion) {
+				errors.push(
+					"Simulation config cannot be used with withPromptChainVersionId. Use withWorkflowId or withPromptVersionId instead.",
+				);
+			}
+			if (!config.workflow && !config.promptVersion) {
+				errors.push("Simulation config requires either withWorkflowId or withPromptVersionId to be set.");
+			}
+			if (config.simulationConfig.responseFields && config.simulationConfig.responseFields.length > 0 && !config.workflow) {
+				errors.push("responseFields in simulationConfig can only be used with withWorkflowId, not with withPromptVersionId.");
+			}
+			if (config.evaluators && config.evaluators.find((e) => typeof e !== "string")) {
+				errors.push("Local (custom) evaluators cannot be used with simulation config. Only platform evaluators are allowed.");
+			}
+		}
+
 		if (errors.length > 0) {
 			throw new Error(
 				`Missing required configuration for test run ${config.name ? ` "${config.name}"` : ""}:\n\t${errors.join(", \n\t")}`,
@@ -134,7 +155,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 		async function processEntry(
 			testRun: Awaited<ReturnType<typeof APITestRunService.createTestRun>>,
 			index: number,
-			mappingKeys: Partial<Record<"input" | "expectedOutput" | "contextToEvaluate", keyof Data<T>>>,
+			mappingKeys: Partial<Record<"input" | "expectedOutput" | "contextToEvaluate" | "scenario" | "expectedSteps", keyof Data<T>>>,
 			getRow: (
 				index: number,
 			) => Promise<{ data: Data<T>; id?: string } | null | undefined> | ({ data: Data<T>; id?: string } | null | undefined),
@@ -160,6 +181,16 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 						: row.data[mappingKeys.contextToEvaluate]
 					: undefined
 			) as string | string[] | undefined;
+			const scenario = mappingKeys.scenario
+				? row.data[mappingKeys.scenario]
+					? String(row.data[mappingKeys.scenario])
+					: undefined
+				: undefined;
+			const expectedSteps = mappingKeys.expectedSteps
+				? row.data[mappingKeys.expectedSteps]
+					? String(row.data[mappingKeys.expectedSteps])
+					: undefined
+				: undefined;
 
 			// 2. get the output
 			// Make sure if its local workflow or remote workflow
@@ -241,6 +272,8 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 						output: output.data,
 						expectedOutput,
 						contextToEvaluate,
+						scenario,
+						expectedSteps,
 						dataEntry: row.data,
 						localEvaluationResults: localEvaluationResults
 							? localEvaluationResults.map((result) => ({
@@ -275,6 +308,8 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 								: typeof mappingKeys.contextToEvaluate === "string"
 									? mappingKeys.contextToEvaluate
 									: undefined,
+					scenario,
+					expectedSteps,
 					dataEntry: row.data,
 				},
 			});
@@ -337,6 +372,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				promptChainVersion?.id,
 				humanEvaluationConfig,
 				tags,
+				config.simulationConfig,
 			);
 
 			try {
@@ -348,6 +384,8 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 						const inputKey = getAllKeysByValue(dataStructure, "INPUT")[0];
 						const expectedOutputKey = getAllKeysByValue(dataStructure, "EXPECTED_OUTPUT")[0];
 						const contextToEvaluateKey = getAllKeysByValue(dataStructure, "CONTEXT_TO_EVALUATE")[0];
+						const scenarioKey = getAllKeysByValue(dataStructure, "SCENARIO")[0];
+						const expectedStepsKey = getAllKeysByValue(dataStructure, "EXPECTED_STEPS")[0];
 
 						if (typeof data === "string") {
 							const APIDatasetService = new MaximDatasetAPI(config.baseUrl, config.apiKey, config.isDebug);
@@ -371,6 +409,8 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 											input: inputKey,
 											expectedOutput: expectedOutputKey,
 											contextToEvaluate: contextToEvaluateKey,
+											scenario: scenarioKey,
+											expectedSteps: expectedStepsKey,
 										},
 										async (index) => {
 											return (await APIDatasetService.getDatasetRow(datasetId, index)) as { data: Data<T>; id: string };
@@ -422,6 +462,8 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 											input: inputKey,
 											expectedOutput: expectedOutputKey,
 											contextToEvaluate: contextToEvaluateKey,
+											scenario: scenarioKey,
+											expectedSteps: expectedStepsKey,
 										},
 										async (index) => {
 											return { data: (await csv.getRow(index)) as Data<T> };
@@ -466,6 +508,8 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 											input: inputKey,
 											expectedOutput: expectedOutputKey,
 											contextToEvaluate: contextToEvaluateKey,
+											scenario: scenarioKey,
+											expectedSteps: expectedStepsKey,
 										},
 										getRow,
 									);
@@ -512,6 +556,8 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 											input: inputKey,
 											expectedOutput: expectedOutputKey,
 											contextToEvaluate: contextToEvaluateKey,
+											scenario: scenarioKey,
+											expectedSteps: expectedStepsKey,
 										},
 										getRow,
 									);

@@ -268,7 +268,7 @@ export class MaximDatasetAPI extends MaximAPI {
 		});
 	}
 
-	public async getDatasetDatastructure(datasetId: string): Promise<Record<string, "INPUT" | "EXPECTED_OUTPUT" | "VARIABLE">> {
+	public async getDatasetDatastructure(datasetId: string): Promise<Record<string, "INPUT" | "EXPECTED_OUTPUT" | "VARIABLE" | "SCENARIO" | "EXPECTED_STEPS">> {
 		return new Promise((resolve, reject) => {
 			this.fetch<MaximAPIDatasetStructureResponse>(`/api/sdk/v1/datasets/structure?datasetId=${datasetId}`)
 				.then((response) => {

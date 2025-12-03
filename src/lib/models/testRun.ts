@@ -287,6 +287,20 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 		id: string;
 		contextToEvaluate?: string;
 	};
+	simulationConfig?: {
+		scenario?: string;
+		persona?: string | { type: "DATASET_COLUMN"; payload: string };
+		maxTurns?: number;
+		tools?: string[];
+		context?: {
+			docs?: {
+				type: "DATASOURCE";
+				dataSourceIds: string[];
+			};
+		};
+		responseFields?: string[];
+		environmentId?: string;
+	};
 	logger?: TestRunLogger<T>;
 	concurrency?: number;
 	tags?: string[];
@@ -515,6 +529,22 @@ export type TestRunBuilder<T extends DataStructure | undefined = undefined> = {
 	withWorkflowId: (id: string, contextToEvaluate?: string) => TestRunBuilder<T>;
 
 	/**
+	 * Sets the simulation configuration for the test run. Use this to run AI-simulated multi-turn conversations.
+	 * @param config The simulation configuration.
+	 * @returns The TestRunBuilder with the simulation config set.
+	 * @example
+	 * maxim
+	 *     .createTestRun("name", "workspaceId")
+	 *     .withWorkflowId("workflowId")
+	 *     .withSimulationConfig({
+	 *         persona: "Business traveler who prefers morning flights",
+	 *         maxTurns: 5,
+	 *         tools: ["flight_search", "booking"],
+	 *     });
+	 */
+	withSimulationConfig: (config: TestRunConfig<T>["simulationConfig"]) => TestRunBuilder<T>;
+
+	/**
 	 * Sets the logger for the test run. (optional, we have a default logger implemented already).
 	 *
 	 * @param logger The logger satisfying TestRunLogger interface.
@@ -667,6 +697,8 @@ export type MaximAPITestRunEntry = {
 	input?: string;
 	expectedOutput?: string;
 	contextToEvaluate?: string | string[];
+	scenario?: string;
+	expectedSteps?: string;
 	output?: string;
 	dataEntry: Record<string, string | string[] | Variable | null | undefined>;
 	localEvaluationResults?: (LocalEvaluationResult & { id: string })[];
