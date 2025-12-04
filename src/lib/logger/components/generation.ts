@@ -91,6 +91,7 @@ export type GenerationConfig = {
 	provider: "openai" | "bedrock" | "anthropic" | "huggingface" | "azure" | "together" | "groq" | "google";
 	model: string;
 	maximPromptId?: string;
+	maximPromptVersionId?: string;
 	messages: (CompletionRequest | ChatCompletionMessage)[];
 	modelParameters: Record<string, any>;
 	tags?: Record<string, string>;
@@ -137,6 +138,7 @@ export class Generation extends EvaluatableBaseContainer {
 	private model?: string;
 	private provider?: string;
 	private maximPromptId?: string;
+	private maximPromptVersionId?: string;
 	private modelParameters?: Record<string, any>;
 
 	/**
@@ -171,6 +173,7 @@ export class Generation extends EvaluatableBaseContainer {
 		this.model = config.model;
 		this.provider = config.provider;
 		this.maximPromptId = config.maximPromptId;
+		this.maximPromptVersionId = config.maximPromptVersionId;
 		this.modelParameters = config.modelParameters;
 
 		// Add extracted attachments
@@ -425,6 +428,7 @@ export class Generation extends EvaluatableBaseContainer {
 			provider: this.provider,
 			model: this.model,
 			maximPromptId: this.maximPromptId,
+			maximPromptVersionId: this.maximPromptVersionId,
 			modelParameters: this.modelParameters,
 		};
 	}
