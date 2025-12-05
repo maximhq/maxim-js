@@ -523,6 +523,10 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.24.0
+
+- feat: Adds a new optional field `maximPromptVersionId` in `GenerationConfig`
+
 ### v6.23.0
 - feat: Added support for simulationConfig in workflow and prompt test runs, enabling simulation runs
 
