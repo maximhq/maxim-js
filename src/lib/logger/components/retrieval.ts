@@ -9,6 +9,14 @@ export type RetrievalConfig = {
 	id: string;
 	name?: string;
 	tags?: Record<string, string>;
+	/**
+	 * Optional explicit start timestamp. If not provided, defaults to current time.
+	 */
+	startTimestamp?: Date;
+	/**
+	 * Optional explicit end timestamp. Can be set during creation for completed operations.
+	 */
+	endTimestamp?: Date;
 };
 
 /**

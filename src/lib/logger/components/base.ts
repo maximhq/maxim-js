@@ -11,6 +11,14 @@ export type BaseConfig = {
 	spanId?: string;
 	name?: string;
 	tags?: Record<string, string>;
+	/**
+	 * Optional explicit start timestamp. If not provided, defaults to current time.
+	 */
+	startTimestamp?: Date;
+	/**
+	 * Optional explicit end timestamp. Can be set during creation for completed operations.
+	 */
+	endTimestamp?: Date;
 };
 
 /**
@@ -67,7 +75,10 @@ export abstract class BaseContainer {
 		}
 		this._name = config.name;
 		this.spanId = config.spanId;
-		this.startTimestamp = new Date();
+		// Use provided startTimestamp if available, otherwise default to current time
+		this.startTimestamp = config.startTimestamp ?? new Date();
+		// Use provided endTimestamp if available
+		this.endTimestamp = config.endTimestamp;
 		this.tags = config.tags || {};
 		this.writer = writer;
 	}
@@ -155,13 +166,18 @@ export abstract class BaseContainer {
 	/**
 	 * Marks this container as ended and records the end timestamp.
 	 *
+	 * @param endTimestamp - Optional explicit end timestamp. If not provided, defaults to current time.
 	 * @returns void
 	 * @example
 	 * // End a container when processing is complete
 	 * container.end();
+	 *
+	 * @example
+	 * // End with explicit timestamp
+	 * container.end(new Date('2024-01-15T10:30:00Z'));
 	 */
-	public end() {
-		this.endTimestamp = new Date();
+	public end(endTimestamp?: Date) {
+		this.endTimestamp = endTimestamp ?? new Date();
 		this.commit("end", { endTimestamp: this.endTimestamp });
 	}
 
@@ -332,7 +348,13 @@ export abstract class EventEmittingBaseContainer extends EvaluatableBaseContaine
 				},
 				{} as Record<string, string>,
 			);
-			BaseContainer.commit_(writer, entity, id, "add-event", { id: eventId, name, timestamp: new Date(), tags, metadata: sanitizedMetadata });
+			BaseContainer.commit_(writer, entity, id, "add-event", {
+				id: eventId,
+				name,
+				timestamp: new Date(),
+				tags,
+				metadata: sanitizedMetadata,
+			});
 			return;
 		}
 		BaseContainer.commit_(writer, entity, id, "add-event", { id: eventId, name, timestamp: new Date(), tags });

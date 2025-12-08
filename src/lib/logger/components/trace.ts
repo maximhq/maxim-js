@@ -1,5 +1,5 @@
-import { LogWriter } from "../writer";
 import type { Attachment } from "../../types";
+import { LogWriter } from "../writer";
 import { EventEmittingBaseContainer } from "./base";
 import { Error, ErrorConfig } from "./error";
 import { Generation, GenerationConfig } from "./generation";
@@ -16,6 +16,14 @@ export type TraceConfig = {
 	name?: string;
 	sessionId?: string;
 	tags?: Record<string, string>;
+	/**
+	 * Optional explicit start timestamp. If not provided, defaults to current time.
+	 */
+	startTimestamp?: Date;
+	/**
+	 * Optional explicit end timestamp. Can be set during creation for completed operations.
+	 */
+	endTimestamp?: Date;
 };
 
 /**
