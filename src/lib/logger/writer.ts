@@ -14,6 +14,7 @@ import type {
 import { populateAttachmentFields } from "./components/attachment";
 import { CommitLog, Entity } from "./components/types";
 import { platform } from "../platform";
+import { ILogWriter } from "./types";
 
 export type LogWriterConfig = {
 	baseUrl: string;
@@ -25,7 +26,7 @@ export type LogWriterConfig = {
 	maxInMemoryLogs?: number;
 };
 
-export class LogWriter {
+export class LogWriter implements ILogWriter {
 	private readonly id = generateUniqueId();
 	private config: LogWriterConfig;
 	private queue: Queue<CommitLog> = new Queue<CommitLog>();

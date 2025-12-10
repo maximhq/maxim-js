@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
+import { ILogWriter } from "../types";
 import { makeObjectSerializable, uniqueId } from "../utils";
-import { LogWriter } from "../writer";
 import { CommitLog, Entity } from "./types";
 
 /**
@@ -43,7 +43,7 @@ export abstract class BaseContainer {
 	protected readonly startTimestamp: Date;
 	protected endTimestamp?: Date;
 	protected tags: Record<string, string>;
-	protected readonly writer: LogWriter;
+	protected readonly writer: ILogWriter;
 
 	/**
 	 * Creates a new base container instance.
@@ -53,7 +53,7 @@ export abstract class BaseContainer {
 	 * @param writer - Log writer instance for committing changes
 	 * @throws {Error} When the provided ID contains invalid characters (only alphanumeric, hyphens, and underscores allowed; only throws if you have `raiseExceptions` config set to true)
 	 */
-	constructor(entity: Entity, config: BaseConfig, writer: LogWriter) {
+	constructor(entity: Entity, config: BaseConfig, writer: ILogWriter) {
 		this.entity = entity;
 		if (!config.id) {
 			config.id = uniqueId();
@@ -116,7 +116,7 @@ export abstract class BaseContainer {
 	 * @param value - The tag value
 	 * @returns void
 	 */
-	public static addTag_(writer: LogWriter, entity: Entity, id: string, key: string, value: string) {
+	public static addTag_(writer: ILogWriter, entity: Entity, id: string, key: string, value: string) {
 		BaseContainer.commit_(writer, entity, id, "update", { tags: { [key]: value } });
 	}
 
@@ -152,7 +152,7 @@ export abstract class BaseContainer {
 	 * @param metadata - The metadata to add
 	 * @returns void
 	 */
-	public static addMetadata_(writer: LogWriter, entity: Entity, id: string, metadata: Record<string, unknown>) {
+	public static addMetadata_(writer: ILogWriter, entity: Entity, id: string, metadata: Record<string, unknown>) {
 		const sanitizedMetadata = Object.entries(metadata).reduce(
 			(acc, [key, value]) => {
 				acc[key] = JSON.stringify(makeObjectSerializable(value));
@@ -190,7 +190,7 @@ export abstract class BaseContainer {
 	 * @param data - Optional additional data to include with the end event
 	 * @returns void
 	 */
-	public static end_(writer: LogWriter, entity: Entity, id: string, data?: any) {
+	public static end_(writer: ILogWriter, entity: Entity, id: string, data?: any) {
 		if (!data) {
 			data = { endTimestamp: new Date() };
 		} else if (!data.endTimestamp) {
@@ -237,7 +237,7 @@ export abstract class BaseContainer {
 	 * @param data - Data associated with the action
 	 * @returns void
 	 */
-	protected static commit_(writer: LogWriter, entity: Entity, id: string, action: string, data?: any) {
+	protected static commit_(writer: ILogWriter, entity: Entity, id: string, action: string, data?: any) {
 		writer.commit(new CommitLog(entity, id, action, data ?? {}));
 	}
 }
@@ -273,7 +273,7 @@ export abstract class EvaluatableBaseContainer extends BaseContainer {
 	 * @param id - The container ID
 	 * @returns Evaluation methods for configuring and triggering evaluations
 	 */
-	public static evaluate_(writer: LogWriter, entity: Entity, id: string) {
+	public static evaluate_(writer: ILogWriter, entity: Entity, id: string) {
 		return new EvaluateContainer(writer, entity, id);
 	}
 }
@@ -332,7 +332,7 @@ export abstract class EventEmittingBaseContainer extends EvaluatableBaseContaine
 	 * @returns void
 	 */
 	public static event_(
-		writer: LogWriter,
+		writer: ILogWriter,
 		entity: Entity,
 		id: string,
 		eventId: string,
@@ -382,7 +382,7 @@ export abstract class EventEmittingBaseContainer extends EvaluatableBaseContaine
  *   .withVariables({ context: 'user_query', expected: 'gold_standard' }, ['bias']);
  */
 export class EvaluateContainer {
-	private _writer: LogWriter;
+	private _writer: ILogWriter;
 	private _entity: Entity;
 	private _id: string;
 
@@ -396,7 +396,7 @@ export class EvaluateContainer {
 	 * // Usually created through container.evaluate getter
 	 * const evaluator = new EvaluateContainer(writer, Entity.GENERATION, 'gen-123');
 	 */
-	constructor(writer: LogWriter, entity: Entity, id: string) {
+	constructor(writer: ILogWriter, entity: Entity, id: string) {
 		this._writer = writer;
 		this._entity = entity;
 		this._id = id;

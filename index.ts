@@ -3,6 +3,8 @@ export * from "./src/lib/dataset/dataset";
 export * from "./src/lib/evaluators/evaluators";
 export * from "./src/lib/logger/components";
 export * from "./src/lib/logger/logger";
+export { LogLine } from "./src/lib/logger/logLine";
+export type { LogLinePushConfig } from "./src/lib/logger/logLine";
 export * from "./src/lib/maxim";
 export * from "./src/lib/models/cache";
 export { VariableType } from "./src/lib/models/dataset";

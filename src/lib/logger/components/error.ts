@@ -1,4 +1,4 @@
-import { LogWriter } from "../writer";
+import { ILogWriter } from "../types";
 import { BaseContainer } from "./base";
 import { Entity } from "./types";
 
@@ -63,7 +63,7 @@ export class Error extends BaseContainer {
 	 *   type: 'ValidationError',
 	 * });
 	 */
-	constructor(config: ErrorConfig, writer: LogWriter) {
+	constructor(config: ErrorConfig, writer: ILogWriter) {
 		super(Entity.ERROR, config, writer);
 		this.message = config.message;
 		this.code = config.code;

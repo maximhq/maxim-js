@@ -1,4 +1,4 @@
-import { LogWriter } from "../writer";
+import { ILogWriter } from "../types";
 import { BaseContainer } from "./base";
 import { Entity } from "./types";
 
@@ -82,7 +82,7 @@ export class ToolCall extends BaseContainer {
 	 *   args: JSON.stringify({ userId: '12345', fields: ['name', 'email'] }),
 	 * });
 	 */
-	constructor(config: ToolCallConfig, writer: LogWriter) {
+	constructor(config: ToolCallConfig, writer: ILogWriter) {
 		super(Entity.TOOL_CALL, config, writer);
 		this.args = config.args;
 		this.description = config.description;
@@ -113,7 +113,7 @@ export class ToolCall extends BaseContainer {
 	 * @param result - The result returned by the tool
 	 * @returns void
 	 */
-	public static result_(writer: LogWriter, id: string, result: string): void {
+	public static result_(writer: ILogWriter, id: string, result: string): void {
 		BaseContainer.commit_(writer, Entity.TOOL_CALL, id, "result", { result });
 		BaseContainer.end_(writer, Entity.TOOL_CALL, id);
 	}
@@ -143,7 +143,7 @@ export class ToolCall extends BaseContainer {
 	 * @param error - Error information
 	 * @returns void
 	 */
-	public static error_(writer: LogWriter, id: string, error: ToolCallError): void {
+	public static error_(writer: ILogWriter, id: string, error: ToolCallError): void {
 		BaseContainer.commit_(writer, Entity.TOOL_CALL, id, "error", { error });
 		BaseContainer.end_(writer, Entity.TOOL_CALL, id);
 	}
