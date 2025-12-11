@@ -1,4 +1,4 @@
-import { LogWriter } from "../writer";
+import { ILogWriter } from "../types";
 import { EvaluatableBaseContainer } from "./base";
 import { Trace, TraceConfig } from "./trace";
 import { Entity } from "./types";
@@ -65,7 +65,7 @@ export class Session extends EvaluatableBaseContainer {
 	 *   name: 'Technical Support Call',
 	 * });
 	 */
-	constructor(config: SessionConfig, writer: LogWriter) {
+	constructor(config: SessionConfig, writer: ILogWriter) {
 		super(Session.ENTITY, config, writer);
 		this.commit("create");
 	}
@@ -101,7 +101,7 @@ export class Session extends EvaluatableBaseContainer {
 	 * @param feedback.comment - Optional textual feedback
 	 * @returns void
 	 */
-	public static feedback_(writer: LogWriter, id: string, feedback: { score: number; comment?: string }) {
+	public static feedback_(writer: ILogWriter, id: string, feedback: { score: number; comment?: string }) {
 		EvaluatableBaseContainer.commit_(writer, Session.ENTITY, id, "add-feedback", feedback);
 	}
 
@@ -134,7 +134,7 @@ export class Session extends EvaluatableBaseContainer {
 	 * @param config - Configuration for the new trace
 	 * @returns A new trace instance
 	 */
-	public static trace_(writer: LogWriter, id: string, config: TraceConfig) {
+	public static trace_(writer: ILogWriter, id: string, config: TraceConfig) {
 		config.sessionId = id;
 		return new Trace(config, writer);
 	}
@@ -167,7 +167,7 @@ export class Session extends EvaluatableBaseContainer {
 	 * @param value - Numeric value of the metric (numeric)
 	 * @returns void
 	 */
-	public static addMetric_(writer: LogWriter, id: string, name: string, value: number) {
+	public static addMetric_(writer: ILogWriter, id: string, name: string, value: number) {
 		EvaluatableBaseContainer.commit_(writer, Session.ENTITY, id, "update", { metrics: { [name]: value } });
 	}
 }

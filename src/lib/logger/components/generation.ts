@@ -2,7 +2,7 @@ import type OpenAI from "openai";
 import { ChatCompletionMessage, CompletionRequest, CompletionRequestContent } from "../../models/prompt";
 import type { Attachment } from "../../types";
 import { uniqueId } from "../utils";
-import { LogWriter } from "../writer";
+import { ILogWriter } from "../types";
 import { EvaluatableBaseContainer } from "./base";
 import { Entity } from "./types";
 
@@ -167,7 +167,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 *   modelParameters: { temperature: 0.7, max_tokens: 200 }
 	 * });
 	 */
-	constructor(config: GenerationConfig, writer: LogWriter) {
+	constructor(config: GenerationConfig, writer: ILogWriter) {
 		// Extract attachments from messages before calling super constructor
 		const [processedMessages, attachments] = parseAttachmentsFromMessages(config.messages);
 
@@ -211,7 +211,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 * @param model - The new model name
 	 * @returns void
 	 */
-	public static setModel_(writer: LogWriter, id: string, model: string) {
+	public static setModel_(writer: ILogWriter, id: string, model: string) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "update", { model });
 	}
 
@@ -246,7 +246,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 * @param messages - Array of messages to add
 	 * @returns void
 	 */
-	public static addMessages_(writer: LogWriter, id: string, messages: (CompletionRequest | ChatCompletionMessage)[]) {
+	public static addMessages_(writer: ILogWriter, id: string, messages: (CompletionRequest | ChatCompletionMessage)[]) {
 		// Extract attachments from messages
 		const [processedMessages, attachments] = parseAttachmentsFromMessages(messages);
 
@@ -284,7 +284,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 * @param modelParameters - Model parameters to update
 	 * @returns void
 	 */
-	public static setModelParameters_(writer: LogWriter, id: string, modelParameters: Record<string, any>) {
+	public static setModelParameters_(writer: ILogWriter, id: string, modelParameters: Record<string, any>) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "update", { modelParameters });
 	}
 
@@ -321,7 +321,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 * @param result - The completion result
 	 * @returns void
 	 */
-	public static result_(writer: LogWriter, id: string, result: TextCompletionResult | ChatCompletionResult | OpenAI.Responses.Response) {
+	public static result_(writer: ILogWriter, id: string, result: TextCompletionResult | ChatCompletionResult | OpenAI.Responses.Response) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "result", { result });
 		EvaluatableBaseContainer.end_(writer, Entity.GENERATION, id);
 	}
@@ -351,7 +351,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 * @param error - Error information
 	 * @returns void
 	 */
-	public static error_(writer: LogWriter, id: string, error: GenerationError) {
+	public static error_(writer: ILogWriter, id: string, error: GenerationError) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "result", { result: { error: error, id: uniqueId() } });
 		EvaluatableBaseContainer.end_(writer, Entity.GENERATION, id);
 	}
@@ -390,7 +390,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 * @param value - Numeric value of the metric (float/number)
 	 * @returns void
 	 */
-	public static addMetric_(writer: LogWriter, id: string, name: string, value: number) {
+	public static addMetric_(writer: ILogWriter, id: string, name: string, value: number) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "update", { metrics: { [name]: value } });
 	}
 
@@ -419,7 +419,7 @@ export class Generation extends EvaluatableBaseContainer {
 	 * @param attachment - The attachment to add
 	 * @returns void
 	 */
-	public static addAttachment_(writer: LogWriter, id: string, attachment: Attachment) {
+	public static addAttachment_(writer: ILogWriter, id: string, attachment: Attachment) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "upload-attachment", attachment);
 	}
 

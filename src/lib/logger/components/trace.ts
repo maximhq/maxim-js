@@ -1,5 +1,5 @@
 import type { Attachment } from "../../types";
-import { LogWriter } from "../writer";
+import { ILogWriter } from "../types";
 import { EventEmittingBaseContainer } from "./base";
 import { Error, ErrorConfig } from "./error";
 import { Generation, GenerationConfig } from "./generation";
@@ -83,7 +83,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 *   sessionId: 'shopping-session-456',
 	 * });
 	 */
-	constructor(config: TraceConfig, writer: LogWriter) {
+	constructor(config: TraceConfig, writer: ILogWriter) {
 		super(Entity.TRACE, config, writer);
 		this.commit("create", {
 			...this.data(),
@@ -126,7 +126,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param config - Configuration for the generation
 	 * @returns A new generation instance
 	 */
-	public static generation_(writer: LogWriter, id: string, config: GenerationConfig) {
+	public static generation_(writer: ILogWriter, id: string, config: GenerationConfig) {
 		const generation = new Generation(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-generation", {
 			id: config.id,
@@ -156,7 +156,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param sessionId - The session ID to associate with
 	 * @returns void
 	 */
-	public static addToSession_(writer: LogWriter, id: string, sessionId: string) {
+	public static addToSession_(writer: ILogWriter, id: string, sessionId: string) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "update", { sessionId });
 	}
 
@@ -187,7 +187,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param feedback.comment - Optional textual feedback
 	 * @returns void
 	 */
-	public static feedback_(writer: LogWriter, id: string, feedback: { score: number; comment?: string }) {
+	public static feedback_(writer: ILogWriter, id: string, feedback: { score: number; comment?: string }) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-feedback", feedback);
 	}
 
@@ -223,7 +223,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param value - Numeric value of the metric (float/number)
 	 * @returns void
 	 */
-	public static addMetric_(writer: LogWriter, id: string, name: string, value: number) {
+	public static addMetric_(writer: ILogWriter, id: string, name: string, value: number) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "update", { metrics: { [name]: value } });
 	}
 
@@ -252,7 +252,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param attachment - The attachment to add
 	 * @returns void
 	 */
-	public static addAttachment_(writer: LogWriter, id: string, attachment: Attachment) {
+	public static addAttachment_(writer: ILogWriter, id: string, attachment: Attachment) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "upload-attachment", attachment);
 	}
 
@@ -284,7 +284,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param config - Configuration for the span
 	 * @returns A new span instance
 	 */
-	public static span_(writer: LogWriter, id: string, config: SpanConfig) {
+	public static span_(writer: ILogWriter, id: string, config: SpanConfig) {
 		const span = new Span(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-span", {
 			id: span.id,
@@ -323,7 +323,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param config - Configuration for the error
 	 * @returns A new error instance
 	 */
-	public static error_(writer: LogWriter, id: string, config: ErrorConfig) {
+	public static error_(writer: ILogWriter, id: string, config: ErrorConfig) {
 		const error = new Error(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-error", {
 			id: config.id,
@@ -362,7 +362,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param config - Configuration for the tool call
 	 * @returns A new tool call instance
 	 */
-	public static toolCall_(writer: LogWriter, id: string, config: ToolCallConfig) {
+	public static toolCall_(writer: ILogWriter, id: string, config: ToolCallConfig) {
 		const toolCall = new ToolCall(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-tool-call", {
 			id: toolCall.id,
@@ -399,7 +399,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param config - Configuration for the retrieval
 	 * @returns A new retrieval instance
 	 */
-	public static retrieval_(writer: LogWriter, id: string, config: RetrievalConfig) {
+	public static retrieval_(writer: ILogWriter, id: string, config: RetrievalConfig) {
 		const retrieval = new Retrieval(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "add-retrieval", {
 			id: config.id,
@@ -429,7 +429,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param input - The input for the trace
 	 * @returns void
 	 */
-	public static input_(writer: LogWriter, id: string, input: string) {
+	public static input_(writer: ILogWriter, id: string, input: string) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "update", {
 			input: input,
 		});
@@ -456,7 +456,7 @@ export class Trace extends EventEmittingBaseContainer {
 	 * @param output - The output for the trace
 	 * @returns void
 	 */
-	public static output_(writer: LogWriter, id: string, output: string) {
+	public static output_(writer: ILogWriter, id: string, output: string) {
 		EventEmittingBaseContainer.commit_(writer, Entity.TRACE, id, "update", {
 			output: output,
 		});

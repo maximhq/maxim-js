@@ -1,5 +1,5 @@
 import type { Attachment } from "../../types";
-import { LogWriter } from "../writer";
+import { ILogWriter } from "../types";
 import { EventEmittingBaseContainer } from "./base";
 import { Error, ErrorConfig } from "./error";
 import { Generation, GenerationConfig } from "./generation";
@@ -77,7 +77,7 @@ export class Span extends EventEmittingBaseContainer {
 	 *   name: 'Input Data Validation',
 	 * });
 	 */
-	constructor(config: SpanConfig, writer: LogWriter) {
+	constructor(config: SpanConfig, writer: ILogWriter) {
 		super(Entity.SPAN, config, writer);
 		this.commit("create");
 	}
@@ -114,7 +114,7 @@ export class Span extends EventEmittingBaseContainer {
 	 * @param config - Configuration for the generation
 	 * @returns A new generation instance
 	 */
-	public static generation_(writer: LogWriter, id: string, config: GenerationConfig) {
+	public static generation_(writer: ILogWriter, id: string, config: GenerationConfig) {
 		const generation = new Generation(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.SPAN, id, "add-generation", {
 			id: config.id,
@@ -152,7 +152,7 @@ export class Span extends EventEmittingBaseContainer {
 	 * @param config - Configuration for the nested span
 	 * @returns A new nested span instance
 	 */
-	public static span_(writer: LogWriter, id: string, config: SpanConfig) {
+	public static span_(writer: ILogWriter, id: string, config: SpanConfig) {
 		const span = new Span(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.SPAN, id, "add-span", {
 			id: config.id,
@@ -191,7 +191,7 @@ export class Span extends EventEmittingBaseContainer {
 	 * @param config - Configuration for the error
 	 * @returns A new error instance
 	 */
-	public static error_(writer: LogWriter, id: string, config: ErrorConfig): Error {
+	public static error_(writer: ILogWriter, id: string, config: ErrorConfig): Error {
 		const error = new Error(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.SPAN, id, "add-error", {
 			id: config.id,
@@ -231,7 +231,7 @@ export class Span extends EventEmittingBaseContainer {
 	 * @param config - Configuration for the retrieval
 	 * @returns A new retrieval instance
 	 */
-	public static retrieval_(writer: LogWriter, id: string, config: RetrievalConfig) {
+	public static retrieval_(writer: ILogWriter, id: string, config: RetrievalConfig) {
 		const retrieval = new Retrieval(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.SPAN, id, "add-retrieval", {
 			id: config.id,
@@ -272,7 +272,7 @@ export class Span extends EventEmittingBaseContainer {
 	 * @param config - Configuration for the tool call
 	 * @returns A new tool call instance
 	 */
-	public static toolCall_(writer: LogWriter, id: string, config: ToolCallConfig) {
+	public static toolCall_(writer: ILogWriter, id: string, config: ToolCallConfig) {
 		const toolCall = new ToolCall(config, writer);
 		EventEmittingBaseContainer.commit_(writer, Entity.SPAN, id, "add-tool-call", {
 			id: config.id,
@@ -306,7 +306,7 @@ export class Span extends EventEmittingBaseContainer {
 	 * @param attachment - The attachment to add
 	 * @returns void
 	 */
-	public static addAttachment_(writer: LogWriter, id: string, attachment: Attachment) {
+	public static addAttachment_(writer: ILogWriter, id: string, attachment: Attachment) {
 		EventEmittingBaseContainer.commit_(writer, Entity.SPAN, id, "upload-attachment", attachment);
 	}
 }

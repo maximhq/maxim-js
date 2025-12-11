@@ -1,4 +1,4 @@
-import { LogWriter } from "../writer";
+import { ILogWriter } from "../types";
 import { EvaluatableBaseContainer } from "./base";
 import { Entity } from "./types";
 
@@ -56,7 +56,7 @@ export class Retrieval extends EvaluatableBaseContainer {
 	 *   name: 'Product Knowledge Base Search',
 	 * });
 	 */
-	constructor(config: RetrievalConfig, writer: LogWriter) {
+	constructor(config: RetrievalConfig, writer: ILogWriter) {
 		super(Entity.RETRIEVAL, config, writer);
 	}
 
@@ -80,7 +80,7 @@ export class Retrieval extends EvaluatableBaseContainer {
 	 * @param query - The search query or input text
 	 * @returns void
 	 */
-	public static input_(writer: LogWriter, id: string, query: string) {
+	public static input_(writer: ILogWriter, id: string, query: string) {
 		EvaluatableBaseContainer.commit_(writer, Entity.RETRIEVAL, id, "update", { input: query });
 	}
 
@@ -118,7 +118,7 @@ export class Retrieval extends EvaluatableBaseContainer {
 	 * @param docs - Retrieved documents as a single string or array
 	 * @returns void
 	 */
-	public static output_(writer: LogWriter, id: string, docs: string | string[]) {
+	public static output_(writer: ILogWriter, id: string, docs: string | string[]) {
 		let finalDocs = docs;
 		if (typeof docs === "string") {
 			finalDocs = [docs];
@@ -158,7 +158,7 @@ export class Retrieval extends EvaluatableBaseContainer {
 	 * @param value - Numeric value of the metric (float/number)
 	 * @returns void
 	 */
-	public static addMetric_(writer: LogWriter, id: string, name: string, value: number) {
+	public static addMetric_(writer: ILogWriter, id: string, name: string, value: number) {
 		EvaluatableBaseContainer.commit_(writer, Entity.RETRIEVAL, id, "update", { metrics: { [name]: value } });
 	}
 }
