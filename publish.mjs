@@ -21,9 +21,18 @@ function invariant(condition, message) {
 	}
 }
 
-// Executing publish script: node path/to/publish.mjs {name} {version}
+// Executing publish script: node path/to/publish.mjs {name} {version} [--otp=CODE] [--auth-type=web]
 // Publishes the package and tags as 'latest' for stable releases.
-const [, , name, version] = process.argv;
+// Use --auth-type=web for security key authentication (e.g., YubiKey)
+const [, , name, version, ...rest] = process.argv;
+
+// Parse optional --otp flag
+const otpArg = rest.find(arg => arg.startsWith('--otp='));
+const otp = otpArg ? otpArg.split('=')[1] : null;
+
+// Parse optional --auth-type flag (use 'web' for security key)
+const authTypeArg = rest.find(arg => arg.startsWith('--auth-type='));
+const authType = authTypeArg ? authTypeArg.split('=')[1] : null;
 
 // A simple SemVer validation to validate the version
 const validVersion = /^(\d+\.){2}\d+(-[0-9A-Za-z-.]+)?$/;
@@ -49,12 +58,20 @@ try {
 }
 
 // Execute "npm publish" to publish
-execSync(`npm publish --access public`);
+// Build auth flags: prefer auth-type for security keys, otherwise use otp
+let authFlags = '';
+if (authType) {
+	authFlags = ` --auth-type=${authType}`;
+} else if (otp) {
+	authFlags = ` --otp=${otp}`;
+}
+
+execSync(`npm publish --access public${authFlags}`, { stdio: 'inherit' });
 
 // Tag as 'latest' if it's not a pre-release version
 if (!version.includes('-')) {
 	console.log(`Tagging version ${version} as 'latest'...`);
-	execSync(`npm dist-tag add @maximai/maxim-js@${version} latest`);
+	execSync(`npm dist-tag add @maximai/maxim-js@${version} latest${authFlags}`, { stdio: 'inherit' });
 } else {
 	console.log(`Pre-release version ${version} published without 'latest' tag.`);
 }
