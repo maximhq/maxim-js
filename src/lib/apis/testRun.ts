@@ -1,3 +1,5 @@
+import type { Variable } from "../models/dataset";
+import { VariableType } from "../models/dataset";
 import { MaximAPIResponse } from "../models/deployment";
 import { HumanEvaluationConfig, MaximAPIEvaluatorFetchResponse } from "../models/evaluator";
 import {
@@ -13,11 +15,9 @@ import {
 	MaximAPITestRunStatusResponse,
 	TestRunResult,
 } from "../models/testRun";
+import type { UrlAttachment } from "../types";
 import { ExtractAPIDataType } from "../utils/utils";
 import { MaximAPI } from "./maxim";
-import type { Variable } from "../models/dataset";
-import { VariableType } from "../models/dataset";
-import type { UrlAttachment } from "../types";
 
 export class MaximTestRunAPI extends MaximAPI {
 	constructor(baseUrl: string, apiKey: string, isDebug?: boolean) {
@@ -191,9 +191,7 @@ export class MaximTestRunAPI extends MaximAPI {
 	public async pushTestRunEntry({ testRun, runConfig, entry }: MaximAPITestRunEntryPushPayload): Promise<void> {
 		// Check if dataEntry is already in Variable format, otherwise convert
 		const rawDataEntry = entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>;
-		const dataEntry = Object.values(rawDataEntry).some(
-			(value) => value !== null && value !== undefined && !this.isVariable(value),
-		);
+		const dataEntry = Object.values(rawDataEntry).some((value) => value !== null && value !== undefined && !this.isVariable(value));
 		const convertedDataEntry = dataEntry
 			? this.convertDataEntryToVariables(rawDataEntry as Record<string, string | string[] | null | undefined>)
 			: (rawDataEntry as Record<string, Variable | undefined>);
