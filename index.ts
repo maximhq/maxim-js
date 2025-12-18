@@ -54,6 +54,7 @@ export * from "./src/lib/models/queryBuilder";
 export type { TestRunBuilder, TestRunConfig, TestRunLogger, TestRunResult, YieldedOutput } from "./src/lib/models/testRun";
 export * from "./src/lib/utils/csvParser";
 export * from "./src/lib/utils/secureRandom";
+export { replaceVariables } from "./src/lib/utils/utils";
 // Additional exports for complete documentation coverage
 export type { MaximLogsAPI } from "./src/lib/apis/logs";
 export type { ChatCompletionChoice, Logprobs, TextCompletionChoice, Usage } from "./src/lib/logger/components/generation";

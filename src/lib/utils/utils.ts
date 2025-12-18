@@ -1,5 +1,5 @@
 import { platform } from "../platform";
-import { getRandomBytes, getRandomHex } from "./secureRandom";
+import { getRandomHex } from "./secureRandom";
 
 export function generateUniqueId(): string {
 	const timestamp = Date.now().toString(36); // Convert timestamp to base 36 string
@@ -38,4 +38,20 @@ export function generateCuid(): string {
 	const prefix = "c";
 	const cuid = [prefix, timestamp, counter, fingerprint, randomPart].join("");
 	return cuid;
+}
+
+/**
+ * Replaces all the variables with their values.
+ * If no values is provided, the variable will not be replaced.
+ *
+ * @example
+ * ```ts
+ * replaceVariables("Hello {{name}}", { name: "John" }); // "Hello John"
+ * ```
+ * @param template The template string to replace variables in.
+ * @param variables The variables to replace.
+ * @returns String with all variables replaced.
+ */
+export function replaceVariables(template: string, variables: Record<string, string>): string {
+	return template.replace(/\{\{(\w+)\}\}/g, (match, key) => variables[key] ?? match);
 }
