@@ -30,6 +30,9 @@ export type {
 	LocalEvaluatorType,
 	OperatorType,
 	PassFailCriteriaType,
+	PlatformEvaluator,
+	VariableMappingFunction,
+	VariableMappingInput,
 } from "./src/lib/models/evaluator";
 export type {
 	ChatCompletionMessage,
