@@ -128,8 +128,8 @@ describe("OpenAI Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-trace-id": trace.id,
-						"x-maxim-generation-name": generationName,
+						"maxim-trace-id": trace.id,
+						"maxim-generation-name": generationName,
 					},
 				},
 			);
@@ -317,8 +317,8 @@ describe("OpenAI Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-trace-id": trace.id,
-						"x-maxim-generation-name": "tool-call-request",
+						"maxim-trace-id": trace.id,
+						"maxim-generation-name": "tool-call-request",
 					},
 				},
 			);
@@ -362,8 +362,8 @@ describe("OpenAI Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-trace-id": trace.id,
-						"x-maxim-generation-name": "tool-call-response",
+						"maxim-trace-id": trace.id,
+						"maxim-generation-name": "tool-call-response",
 					},
 				},
 			);
@@ -426,8 +426,8 @@ describe("OpenAI Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-trace-id": trace.id,
-						"x-maxim-generation-name": "streaming-tool-call-request",
+						"maxim-trace-id": trace.id,
+						"maxim-generation-name": "streaming-tool-call-request",
 					},
 				},
 			);
@@ -492,8 +492,8 @@ describe("OpenAI Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-trace-id": trace.id,
-						"x-maxim-generation-name": "streaming-tool-call-response",
+						"maxim-trace-id": trace.id,
+						"maxim-generation-name": "streaming-tool-call-response",
 					},
 				},
 			);
@@ -555,8 +555,8 @@ describe("OpenAI Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-session-id": session.id,
-						"x-maxim-trace-tags": JSON.stringify({
+						"maxim-session-id": session.id,
+						"maxim-trace-tags": JSON.stringify({
 							session_type: "test",
 							user_id: "123",
 						}),

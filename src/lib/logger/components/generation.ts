@@ -214,6 +214,31 @@ export class Generation extends EvaluatableBaseContainer {
 	public static setModel_(writer: ILogWriter, id: string, model: string) {
 		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "update", { model });
 	}
+	
+	/**
+	 * Updates the name being used for this generation.
+	 *
+	 * @param name - The new name
+	 * @returns void
+	 * @example
+	 * generation.setName('Customer Query Response');
+	 */
+	public setName(name: string) {
+		this._name = name;
+		this.commit("update", { name });
+	}
+
+	/**
+	 * Static method to update the name for any generation by ID.
+	 *
+	 * @param writer - The log writer instance
+	 * @param id - The generation ID
+	 * @param name - The new name
+	 * @returns void
+	 */
+	public static setName_(writer: ILogWriter, id: string, name: string) {
+		EvaluatableBaseContainer.commit_(writer, Entity.GENERATION, id, "update", { name });
+	}
 
 	/**
 	 * Adds additional messages to this generation's conversation.

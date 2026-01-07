@@ -146,8 +146,8 @@ describe("OpenAI Responses API Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-trace-id": trace.id,
-						"x-maxim-generation-name": generationName,
+						"maxim-trace-id": trace.id,
+						"maxim-generation-name": generationName,
 					},
 				},
 			);
@@ -183,8 +183,8 @@ describe("OpenAI Responses API Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-trace-id": trace.id,
-						"x-maxim-generation-name": generationName,
+						"maxim-trace-id": trace.id,
+						"maxim-generation-name": generationName,
 					},
 				},
 			);
@@ -306,8 +306,8 @@ describe("OpenAI Responses API Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-trace-id": trace.id,
-						"x-maxim-generation-name": "responses-tool-call-request",
+						"maxim-trace-id": trace.id,
+						"maxim-generation-name": "responses-tool-call-request",
 					},
 				},
 			);
@@ -352,8 +352,8 @@ describe("OpenAI Responses API Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-trace-id": trace.id,
-						"x-maxim-generation-name": "responses-tool-call-response",
+						"maxim-trace-id": trace.id,
+						"maxim-generation-name": "responses-tool-call-response",
 					},
 				},
 			);
@@ -388,7 +388,7 @@ describe("OpenAI Responses API Integration Tests", () => {
 				},
 				{
 					headers: {
-						"x-maxim-session-id": session.id,
+						"maxim-session-id": session.id,
 					},
 				},
 			);
