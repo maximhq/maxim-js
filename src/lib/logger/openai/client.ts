@@ -1,9 +1,10 @@
 import type OpenAI from "openai";
 import type { MaximLogger } from "../logger";
 import { MaximOpenAIChat } from "./chat";
+import { MaximOpenAIResponses } from "./responses";
 
 /**
- * A wrapped OpenAI client that automatically logs all chat completions to Maxim.
+ * A wrapped OpenAI client that automatically logs all chat completions and responses to Maxim.
  *
  * This class provides the same interface as the OpenAI client but with automatic
  * logging of traces and generations for observability purposes.
@@ -58,9 +59,29 @@ import { MaximOpenAIChat } from "./chat";
  * }
  * // Logging happens automatically when stream completes
  * ```
+ *
+ * @example
+ * ```typescript
+ * // Using Responses API (non-streaming)
+ * const response = await client.responses.create({
+ *   model: 'gpt-4.1',
+ *   input: 'What is the meaning of life?'
+ * });
+ *
+ * // Using Responses API (streaming)
+ * const stream = await client.responses.stream({
+ *   model: 'gpt-4.1',
+ *   input: 'Tell me a story'
+ * });
+ * for await (const event of stream) {
+ *   // process events
+ * }
+ * // Logging happens automatically when stream completes
+ * ```
  */
 export class MaximOpenAIClient {
 	private _chat: MaximOpenAIChat;
+	private _responses: MaximOpenAIResponses;
 
 	/**
 	 * Creates a new MaximOpenAIClient.
@@ -73,6 +94,7 @@ export class MaximOpenAIClient {
 		private logger: MaximLogger,
 	) {
 		this._chat = new MaximOpenAIChat(client, logger);
+		this._responses = new MaximOpenAIResponses(client, logger);
 	}
 
 	/**
@@ -80,5 +102,12 @@ export class MaximOpenAIClient {
 	 */
 	get chat(): MaximOpenAIChat {
 		return this._chat;
+	}
+
+	/**
+	 * Access the responses resource with automatic Maxim logging.
+	 */
+	get responses(): MaximOpenAIResponses {
+		return this._responses;
 	}
 }

@@ -286,6 +286,335 @@ export class OpenAIUtils {
 		}
 		return combinedText;
 	}
+
+	// ========================================
+	// Responses API Utilities
+	// ========================================
+
+	/**
+	 * Parse Responses API input to generation messages format.
+	 * Handles both simple string inputs and complex ResponseInputParam arrays.
+	 */
+	static parseResponsesInputToMessages(inputValue: any): (CompletionRequest | ChatCompletionMessage)[] {
+		if (inputValue === null || inputValue === undefined) {
+			return [];
+		}
+
+		// Simple string input
+		if (typeof inputValue === "string") {
+			return [{ role: "user", content: inputValue }];
+		}
+
+		// Not an array - wrap as user message
+		if (!Array.isArray(inputValue)) {
+			return [{ role: "user", content: String(inputValue) }];
+		}
+
+		const messages: (CompletionRequest | ChatCompletionMessage)[] = [];
+
+		for (const item of inputValue) {
+			// String item
+			if (typeof item === "string") {
+				messages.push({ role: "user", content: item });
+				continue;
+			}
+
+			// Non-object item
+			if (!item || typeof item !== "object") {
+				messages.push({ role: "user", content: String(item) });
+				continue;
+			}
+
+			const itemType = item.type;
+
+			// EasyInputMessageParam or Message (both have role and content)
+			if ("role" in item && "content" in item && (itemType === undefined || itemType === "message")) {
+				let roleVal = item.role || "user";
+				if (typeof roleVal !== "string" || roleVal.trim() === "") {
+					roleVal = "user";
+				}
+				// Map developer -> system for internal roles
+				const roleMap: Record<string, string> = { developer: "system" };
+				const finalRole = roleMap[roleVal] || roleVal;
+				const contentVal = item.content;
+
+				if (typeof contentVal === "string") {
+					if (finalRole === "assistant") {
+						messages.push({ role: "assistant", content: contentVal });
+					} else {
+						messages.push({ role: finalRole as CompletionRequest["role"], content: contentVal });
+					}
+				} else {
+					// Complex content - extract text parts
+					const textContent = extractContentFromInputMessageList(contentVal);
+					if (finalRole === "assistant") {
+						messages.push({ role: "assistant", content: textContent });
+					} else {
+						messages.push({ role: finalRole as CompletionRequest["role"], content: textContent });
+					}
+				}
+				continue;
+			}
+
+			// ResponseOutputMessageParam (assistant)
+			if (itemType === "message" && item.role === "assistant" && "content" in item) {
+				const assistantText = extractAssistantTextFromOutputMessage(item.content);
+				messages.push({ role: "assistant", content: assistantText });
+				continue;
+			}
+
+			// Function/tool CALL intents (assistant role)
+			if (
+				itemType === "function_call" ||
+				itemType === "file_search_call" ||
+				itemType === "computer_call" ||
+				itemType === "code_interpreter_call" ||
+				itemType === "web_search_call" ||
+				itemType === "local_shell_call" ||
+				itemType === "image_generation_call"
+			) {
+				const name = item.name || itemType;
+				const args = item.arguments || item.queries || item.action;
+				const callId = item.call_id || item.id;
+				let summary = `${name} call`;
+				if (callId) summary += ` id=${callId}`;
+				if (args !== undefined) summary += ` args=${JSON.stringify(args)}`;
+				messages.push({ role: "assistant", content: summary });
+				continue;
+			}
+
+			// Tool OUTPUTS (tool role)
+			if (itemType === "function_call_output" || itemType === "local_shell_call_output" || itemType === "computer_call_output") {
+				if (itemType === "computer_call_output") {
+					const output = item.output;
+					if (output && typeof output === "object" && output.type === "computer_screenshot") {
+						const imageUrl = output.image_url;
+						if (typeof imageUrl === "string" && imageUrl) {
+							messages.push({
+								role: "tool",
+								content: [{ type: "image_url", image_url: { url: imageUrl } }],
+							} as CompletionRequest);
+							continue;
+						}
+					}
+				}
+				// Default: pass raw output as string
+				const outVal = item.output;
+				messages.push({
+					role: "tool",
+					content: outVal !== undefined ? String(outVal) : "",
+				} as CompletionRequest);
+				continue;
+			}
+
+			// MCP items
+			if (
+				itemType === "mcp_list_tools" ||
+				itemType === "mcp_approval_request" ||
+				itemType === "mcp_approval_response" ||
+				itemType === "mcp_call"
+			) {
+				if (itemType === "mcp_call" && item.output !== undefined) {
+					messages.push({ role: "tool", content: String(item.output) } as CompletionRequest);
+				} else if (itemType === "mcp_approval_response") {
+					messages.push({ role: "tool", content: summarizeObject(item) } as CompletionRequest);
+				} else {
+					messages.push({ role: "assistant", content: summarizeObject(item) });
+				}
+				continue;
+			}
+
+			// Reasoning item -> assistant
+			if (itemType === "reasoning") {
+				const summary = item.summary;
+				let txt: string;
+				if (Array.isArray(summary)) {
+					txt = summary
+						.filter((s: any) => s && typeof s === "object")
+						.map((s: any) => s.text || "")
+						.join("");
+				} else {
+					txt = String(summary);
+				}
+				messages.push({ role: "assistant", content: txt });
+				continue;
+			}
+
+			// Item reference -> assistant note
+			if (itemType === "item_reference" || ("id" in item && item.type === undefined && Object.keys(item).length === 1)) {
+				messages.push({ role: "assistant", content: `[item_reference] id=${item.id}` });
+				continue;
+			}
+
+			// Unknown dict item -> user as final fallback
+			messages.push({ role: "user", content: String(item) });
+		}
+
+		return messages;
+	}
+
+	/**
+	 * Extract model parameters from Responses API request options.
+	 * Skips input, extra_headers, and model.
+	 */
+	static getResponsesModelParams(options: Record<string, any>): Record<string, any> {
+		const modelParams: Record<string, any> = {};
+		const skipKeys = ["input", "extra_headers", "model"];
+
+		for (const [key, value] of Object.entries(options)) {
+			if (!skipKeys.includes(key) && value !== undefined && value !== null) {
+				modelParams[key] = value;
+			}
+		}
+
+		return modelParams;
+	}
+
+	/**
+	 * Extract text output from a Responses API response.
+	 * Returns the output_text property if available, or null.
+	 */
+	static extractResponsesOutputText(response: any): string | null {
+		try {
+			// Try output_text property (getter in OpenAI SDK Response objects)
+			const outputText = response?.output_text;
+			if (typeof outputText === "string" && outputText.length > 0) {
+				return outputText;
+			}
+		} catch {
+			// Ignore
+		}
+
+		// Fallback for dict-like structure - handle nested message content
+		try {
+			if (response && typeof response === "object") {
+				const output = response.output;
+				if (Array.isArray(output)) {
+					const texts: string[] = [];
+					for (const item of output) {
+						if (item && typeof item === "object") {
+							// Handle direct output_text or text items
+							if (item.type === "output_text" || item.type === "text") {
+								const textVal = item.text || item.content;
+								if (typeof textVal === "string") {
+									texts.push(textVal);
+								}
+							}
+							// Handle message items with nested content array (actual Responses API structure)
+							else if (item.type === "message" && Array.isArray(item.content)) {
+								for (const contentItem of item.content) {
+									if (contentItem && typeof contentItem === "object") {
+										if (contentItem.type === "output_text" || contentItem.type === "text") {
+											const textVal = contentItem.text || contentItem.content;
+											if (typeof textVal === "string") {
+												texts.push(textVal);
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+					if (texts.length > 0) {
+						return texts.join("");
+					}
+				}
+			}
+		} catch {
+			// Ignore
+		}
+
+		return null;
+	}
+}
+
+/**
+ * Helper to extract text content from ResponseInputMessageContentListParam.
+ */
+function extractContentFromInputMessageList(items: any): string {
+	if (!Array.isArray(items)) {
+		return String(items);
+	}
+
+	const contentList: string[] = [];
+	for (const item of items) {
+		if (!item || typeof item !== "object") {
+			contentList.push(String(item));
+			continue;
+		}
+
+		const t = item.type;
+		if (t === "input_text" && "text" in item) {
+			contentList.push(String(item.text || ""));
+		} else if (t === "input_image") {
+			const imageUrl = item.image_url;
+			const fileId = item.file_id;
+			const urlVal = imageUrl || (fileId ? `file:${fileId}` : null);
+			if (urlVal) {
+				contentList.push(`[image:${urlVal}]`);
+			} else {
+				contentList.push("[image]");
+			}
+		} else if (t === "input_file") {
+			const name = item.filename || item.file_url || item.file_id;
+			contentList.push(`[file:${name}]`);
+		} else {
+			contentList.push(String(item));
+		}
+	}
+
+	return contentList.join(" ");
+}
+
+/**
+ * Helper to extract text from assistant output message content.
+ */
+function extractAssistantTextFromOutputMessage(content: any): string {
+	if (!Array.isArray(content)) {
+		return String(content);
+	}
+
+	const parts: string[] = [];
+	for (const c of content) {
+		if (c && typeof c === "object") {
+			const t = c.type;
+			if (t === "output_text") {
+				const txt = c.text;
+				if (typeof txt === "string") {
+					parts.push(txt);
+				}
+			} else if (t === "refusal") {
+				const ref = c.refusal;
+				if (typeof ref === "string") {
+					parts.push(`[refusal] ${ref}`);
+				}
+			} else {
+				parts.push(String(c));
+			}
+		} else {
+			parts.push(String(c));
+		}
+	}
+	return parts.join("");
+}
+
+/**
+ * Helper to summarize an object for logging.
+ */
+function summarizeObject(obj: Record<string, any>): string {
+	try {
+		const typ = obj["type"];
+		if (typ) {
+			const entries = Object.entries(obj)
+				.filter(([k]) => k !== "type")
+				.map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+				.join(", ");
+			return `[${typ}] ${entries}`;
+		}
+	} catch {
+		// Ignore
+	}
+	return String(obj);
 }
 
 /**
