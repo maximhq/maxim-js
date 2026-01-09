@@ -561,6 +561,10 @@ export class MaximLogger {
 	public generationSetModel(generationId: string, model: string) {
 		Generation.setModel_(this.writer, generationId, model);
 	}
+	
+	public generationSetName(generationId: string, name: string) {
+		Generation.setName_(this.writer, generationId, name);
+	}
 
 	/**
 	 * Adds a tag to a generation for categorization and filtering.

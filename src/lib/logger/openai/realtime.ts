@@ -1,109 +1,44 @@
 import { v4 as uuid } from "uuid";
 import type { MaximLogger } from "../logger";
-import type { Generation, Session, Trace, ToolCall } from "../components";
+import type { ChatCompletionChoice, ChatCompletionResult, Session, Usage } from "../components";
 import type { Attachment } from "../../types";
 import type { CompletionRequest } from "../../models/prompt";
+import {
+	ConversationItemInputAudioTranscriptionCompletedEvent,
+	InputAudioBufferAppendEvent,
+	RealtimeClientEvent,
+	RealtimeErrorEvent,
+	RealtimeSessionCreateRequest,
+	ResponseCreateEvent,
+	ResponseDoneEvent,
+	SessionCreatedEvent,
+	ResponseFunctionCallArgumentsDeltaEvent,
+	ResponseFunctionCallArgumentsDoneEvent,
+	SessionUpdatedEvent,
+	RealtimeServerEvent,
+	ConversationItemAdded,
+} from "openai/resources/realtime/realtime";
+import { ResponseAudioDeltaEvent } from "openai/resources/responses/responses";
 
-// Type definitions for OpenAI Realtime API events
-// These are based on the OpenAI SDK's realtime types
+import { ContainerManager, TraceContainer } from "../../models/containers";
+import { MaximRealtimeHeaders, RealtimeState } from "./realtime/types";
+import { extractMessageContent, extractOutputText, pcm16ToWav } from "./realtime/utils";
+import { OpenAIRealtimeWS } from "openai/realtime/ws";
+import { AsyncQueue } from "./realtime/queue";
 
-/**
- * Configuration for custom headers to pass session/generation metadata.
- */
-export interface MaximRealtimeHeaders {
-	/** Custom session ID to use (if not provided, a new one is created) */
-	"maxim-session-id"?: string;
-	/** Name for the generation */
-	"maxim-generation-name"?: string;
-	/** Name for the session */
-	"maxim-session-name"?: string;
-	/** Tags for the session (JSON string or object) */
-	"maxim-session-tags"?: string | Record<string, string>;
-}
+// Re-export types for external use
+export type { MaximRealtimeHeaders } from "./realtime/types";
 
-/**
- * Internal state for tracking realtime connection logging.
- */
-interface RealtimeState {
-	sessionId: string;
-	sessionName: string | undefined;
-	sessionTags: Record<string, string> | undefined;
-	generationName: string | undefined;
-	isLocalSession: boolean;
-
-	// Container references
-	session: Session | null;
-	currentTrace: Trace | null;
-	currentGeneration: Generation | null;
-	currentGenerationId: string | null;
-
-	// State tracking
-	sessionModel: string | null;
-	sessionConfig: Record<string, any> | null;
-	systemInstructions: string | null;
-	transcriptionModel: string | null;
-	transcriptionLanguage: string | null;
-	lastUserMessage: string | null;
-	outputAudio: Buffer | null;
-	currentModelParameters: Record<string, any> | null;
-
-	// Tools configuration (for descriptions)
-	toolsConfig: Map<string, { name: string; description: string }>;
-
-	// Function call tracking
-	functionCallArguments: Map<string, string>;
-	toolCalls: Map<string, ToolCall>;
-	toolCallOutputs: Map<string, string>;
-	pendingToolCallOutputs: Map<string, string>; // Outputs captured from send()
-	hasPendingToolCalls: boolean;
-	isContinuingTrace: boolean;
-
-	// Audio tracking
-	userAudioBuffer: Map<string, Buffer>;
-	pendingUserAudio: Buffer;
-	currentItemId: string | null;
-}
-
-/**
- * Wrapper for OpenAI Realtime API connections that automatically logs to Maxim.
- *
- * This class intercepts events from the OpenAI Realtime API and logs them to Maxim,
- * creating sessions, traces, and generations for each interaction.
- *
- * @example
- * ```typescript
- * import { OpenAIRealtimeWS } from 'openai/realtime/ws';
- * import { Maxim } from '@maximai/maxim-js';
- * import { MaximOpenAIRealtimeWrapper } from '@maximai/maxim-js/openai';
- *
- * const maxim = new Maxim({ apiKey: process.env.MAXIM_API_KEY });
- * const logger = await maxim.logger({ id: 'my-app' });
- *
- * const rt = new OpenAIRealtimeWS({ model: 'gpt-4o-realtime-preview' });
- * const wrapper = new MaximOpenAIRealtimeWrapper(rt, logger);
- *
- * // Use the realtime connection normally
- * rt.socket.on('open', () => {
- *   rt.send({
- *     type: 'session.update',
- *     session: { modalities: ['text', 'audio'] }
- *   });
- * });
- * ```
- */
 export class MaximOpenAIRealtimeWrapper {
 	private state: RealtimeState;
-	private boundHandlers: Map<string, (event: any) => void> = new Map();
+	private boundHandlers: Map<RealtimeServerEvent["type"], (event: any) => void> = new Map();
+	private containerManager: ContainerManager = new ContainerManager();
+	private eventQueue: AsyncQueue = new AsyncQueue();
+	private originalSend: ((event: RealtimeClientEvent) => any) | null = null;
+	private modelParametersToIgnore: string[] = [];
 
-	/**
-	 * Creates a new MaximOpenAIRealtimeWrapper.
-	 *
-	 * @param realtimeClient - The OpenAI Realtime client instance (OpenAIRealtimeWS or OpenAIRealtimeWebSocket)
-	 * @param logger - The MaximLogger instance to use for logging
-	 * @param headers - Optional headers for session/generation metadata
-	 */
 	constructor(
-		private realtimeClient: any,
+		private realtimeClient: OpenAIRealtimeWS,
 		private logger: MaximLogger,
 		headers?: MaximRealtimeHeaders,
 	) {
@@ -135,9 +70,11 @@ export class MaximOpenAIRealtimeWrapper {
 			isLocalSession: !headers?.["maxim-session-id"],
 
 			session: null,
-			currentTrace: null,
-			currentGeneration: null,
+			currentTraceId: null,
 			currentGenerationId: null,
+			sttGenerationId: null,
+			llmGenerationId: null,
+			currentGenerationType: null,
 
 			sessionModel: null,
 			sessionConfig: null,
@@ -151,7 +88,7 @@ export class MaximOpenAIRealtimeWrapper {
 			toolsConfig: new Map(),
 
 			functionCallArguments: new Map(),
-			toolCalls: new Map(),
+			toolCallIds: new Set(),
 			toolCallOutputs: new Map(),
 			pendingToolCallOutputs: new Map(),
 			hasPendingToolCalls: false,
@@ -160,27 +97,38 @@ export class MaximOpenAIRealtimeWrapper {
 			userAudioBuffer: new Map(),
 			pendingUserAudio: Buffer.alloc(0),
 			currentItemId: null,
+
+			// Audio input mode flag
+			isAudioInput: false,
+
+			// Flag for deferred trace finalization
+			pendingTraceFinalization: false,
 		};
+
+		this.modelParametersToIgnore = ["model", "instructions", "expires_at", "include", "object", "type", "id", "audio"];
 
 		// Attach event listeners
 		this.attachEventListeners();
+
+		// Wrap send method to intercept client events
+		this.wrapSendMethod();
 	}
 
 	/**
 	 * Attach event listeners to the realtime client.
 	 */
 	private attachEventListeners(): void {
-		const events = [
+		const events: RealtimeServerEvent["type"][] = [
 			"session.created",
 			"session.updated",
-			"conversation.item.created",
+			"conversation.item.added", // Server sends this when audio buffer is committed (user audio input)
+			"conversation.item.created", // Server sends this in response to client's conversation.item.create
 			"conversation.item.deleted",
 			"response.created",
-			"response.text.delta",
-			"response.audio.delta",
-			"response.audio_transcript.delta",
 			"response.function_call_arguments.delta",
 			"response.function_call_arguments.done",
+			"response.output_audio.delta",
+			"response.output_audio.done",
 			"response.done",
 			"conversation.item.input_audio_transcription.completed",
 			"error",
@@ -191,148 +139,108 @@ export class MaximOpenAIRealtimeWrapper {
 			this.boundHandlers.set(eventType, handler);
 			this.realtimeClient.on(eventType, handler);
 		}
-
-		// Handle input audio buffer if the client has it
-		this.wrapInputAudioBuffer();
-
-		// Wrap send method to capture outgoing user messages
-		this.wrapSendMethod();
 	}
 
 	/**
-	 * Wrap the send method to capture outgoing user messages and tool outputs.
-	 * This ensures we capture data before response.created fires.
+	 * Wrap the send method to intercept client events like input_audio_buffer.append.
 	 */
 	private wrapSendMethod(): void {
-		const originalSend = this.realtimeClient.send?.bind(this.realtimeClient);
+		const originalSend = this.realtimeClient.send.bind(this.realtimeClient);
 		if (!originalSend) return;
+		this.originalSend = originalSend;
 
-		this.realtimeClient.send = (event: any) => {
-			// Capture session.update to get tools config
-			if (event?.type === "session.update") {
-				const tools = event.session?.tools;
-				if (Array.isArray(tools)) {
-					for (const tool of tools) {
-						if (tool?.name) {
-							this.state.toolsConfig.set(tool.name, {
-								name: tool.name,
-								description: tool.description || `Function: ${tool.name}`,
-							});
-						}
-					}
-				}
-			}
-
-			// Capture user messages when they're sent
-			if (event?.type === "conversation.item.create") {
-				const item = event.item;
-				if (item?.type === "message" && item?.role === "user") {
-					const content = item.content;
-					if (Array.isArray(content)) {
-						const textParts: string[] = [];
-						for (const part of content) {
-							if (part?.type === "input_text" && part.text) {
-								textParts.push(part.text);
-							}
-						}
-						if (textParts.length > 0) {
-							this.state.lastUserMessage = textParts.join("");
-						}
-					}
-				}
-
-				// Capture function call outputs when they're sent
-				if (item?.type === "function_call_output") {
-					const callId = item.call_id;
-					const output = item.output;
-					if (callId && output !== undefined) {
-						const outputStr = typeof output === "string" ? output : JSON.stringify(output);
-						this.state.pendingToolCallOutputs.set(callId, outputStr);
-
-						// Also set result on the tool call if it exists
-						const toolCall = this.state.toolCalls.get(callId);
-						if (toolCall) {
-							try {
-								toolCall.result(outputStr);
-							} catch (e) {
-								console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error setting tool call result: ${e}`);
-							}
-						}
-					}
-				}
-			}
+		this.realtimeClient.send = (event: RealtimeClientEvent) => {
+			this.handleClientEvent(event);
 			return originalSend(event);
 		};
 	}
 
 	/**
-	 * Wrap the input_audio_buffer methods to capture user audio.
+	 * Handle client events being sent to the server.
+	 * Events are queued and processed sequentially to prevent race conditions.
 	 */
-	private wrapInputAudioBuffer(): void {
-		// Check if the realtime client has input_audio_buffer
-		const inputAudioBuffer = this.realtimeClient.inputAudioBuffer || this.realtimeClient.input_audio_buffer;
-		if (!inputAudioBuffer) return;
-
-		// Store original methods
-		const originalAppend = inputAudioBuffer.append?.bind(inputAudioBuffer);
-
-		if (originalAppend) {
-			// Override append to capture audio
-			inputAudioBuffer.append = (options: { audio: string }) => {
-				try {
-					const audioBytes = Buffer.from(options.audio, "base64");
-					this.state.pendingUserAudio = Buffer.concat([this.state.pendingUserAudio, audioBytes]);
-				} catch (e) {
-					console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error capturing user audio: ${e}`);
+	private handleClientEvent(event: RealtimeClientEvent): void {
+		// Queue the client event handler to ensure sequential processing
+		this.eventQueue.enqueue(async () => {
+			try {
+				switch (event.type) {
+					case "input_audio_buffer.append":
+						this.handleInputAudioBufferAppend(event);
+						break;
+					default:
+						break;
+					// Add other client events as needed
 				}
-				return originalAppend(options);
-			};
+			} catch (e) {
+				console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error handling client event ${event.type}: ${e}`);
+			}
+		});
+	}
+
+	/**
+	 * Handle input_audio_buffer.append events to capture user audio.
+	 */
+	private handleInputAudioBufferAppend(event: InputAudioBufferAppendEvent): void {
+		try {
+			const audioBytes = Buffer.from(event.audio, "base64");
+			this.state.pendingUserAudio = Buffer.concat([this.state.pendingUserAudio, audioBytes]);
+
+			// Mark that this is an audio input conversation
+			if (!this.state.isAudioInput) {
+				this.state.isAudioInput = true;
+			}
+		} catch (e) {
+			console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error capturing user audio: ${e}`);
 		}
 	}
 
 	/**
 	 * Handle realtime events and log to Maxim.
+	 * Events are queued and processed sequentially to prevent race conditions.
 	 */
 	private handleEvent(eventType: string, event: any): void {
-		try {
-			switch (eventType) {
-				case "session.created":
-					this.handleSessionCreated(event);
-					break;
-				case "session.updated":
-					this.handleSessionUpdated(event);
-					break;
-				case "conversation.item.created":
-					this.handleConversationItemCreated(event);
-					break;
-				case "conversation.item.deleted":
-					this.handleConversationItemDeleted();
-					break;
-				case "response.created":
-					this.handleResponseCreated(event);
-					break;
-				case "response.audio.delta":
-					this.handleResponseAudioDelta(event);
-					break;
-				case "response.function_call_arguments.delta":
-					this.handleFunctionCallArgumentsDelta(event);
-					break;
-				case "response.function_call_arguments.done":
-					this.handleFunctionCallArgumentsDone(event);
-					break;
-				case "response.done":
-					this.handleResponseDone(event);
-					break;
-				case "conversation.item.input_audio_transcription.completed":
-					this.handleInputAudioTranscriptionCompleted(event);
-					break;
-				case "error":
-					this.handleError(event);
-					break;
+		// Queue the event handler to ensure sequential processing
+		this.eventQueue.enqueue(async () => {
+			try {
+				switch (eventType) {
+					case "session.created":
+						this.handleSessionCreated(event);
+						break;
+					case "session.updated":
+						this.handleSessionUpdated(event);
+						break;
+					case "conversation.item.added":
+						this.handleConversationItemAdded(event);
+						break;
+					case "conversation.item.deleted":
+						this.handleConversationItemDeleted();
+						break;
+					case "response.created":
+						this.handleResponseCreated(event);
+						break;
+					case "response.function_call_arguments.delta":
+						this.handleFunctionCallArgumentsDelta(event);
+						break;
+					case "response.function_call_arguments.done":
+						this.handleFunctionCallArgumentsDone(event);
+						break;
+					case "response.output_audio.delta":
+						this.handleResponseOutputAudioDelta(event);
+						break;
+					case "response.done":
+						this.handleResponseDone(event);
+						break;
+					case "conversation.item.input_audio_transcription.completed":
+						this.handleInputAudioTranscriptionCompleted(event);
+						break;
+					case "error":
+						this.handleError(event);
+						break;
+				}
+			} catch (e) {
+				console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error handling event ${eventType}: ${e}`);
 			}
-		} catch (e) {
-			console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error handling event ${eventType}: ${e}`);
-		}
+		});
 	}
 
 	/**
@@ -340,33 +248,86 @@ export class MaximOpenAIRealtimeWrapper {
 	 */
 	private getOrCreateSession(): Session {
 		if (!this.state.session) {
+			const tags = { ...(this.state.sessionTags ?? {}) };
 			this.state.session = this.logger.session({
 				id: this.state.sessionId,
 				name: this.state.sessionName || "OpenAI Realtime Session",
-				tags: this.state.sessionTags,
+				tags,
 			});
 		}
 		return this.state.session;
 	}
 
 	/**
-	 * Create a new trace for an interaction.
+	 * Get the current trace container.
 	 */
-	private createTrace(traceId: string): Trace {
+	private getCurrentTraceContainer(): TraceContainer | undefined {
+		if (!this.state.currentTraceId) return undefined;
+		const container = this.containerManager.getContainer(this.state.currentTraceId);
+		return container instanceof TraceContainer ? container : undefined;
+	}
+
+	/**
+	 * Create a new trace for an interaction using ContainerManager.
+	 */
+	private createTrace(traceId: string): TraceContainer {
 		const session = this.getOrCreateSession();
-		const trace = session.trace({
-			id: traceId,
-			name: "Realtime Interaction",
-		});
-		return trace;
+		const traceContainer = new TraceContainer(this.containerManager, this.logger, traceId, "Realtime Interaction", undefined, false);
+		traceContainer.create({}, session.id);
+		return traceContainer;
+	}
+
+	/**
+	 * Finalize the trace and clean up state.
+	 * This handles ending the trace, session, and resetting all relevant state.
+	 */
+	private finalizeTrace(traceContainer: TraceContainer | undefined): void {
+		// End trace
+		if (traceContainer && this.state.currentTraceId) {
+			try {
+				traceContainer.end();
+			} catch (e) {
+				console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error ending trace: ${e}`);
+			}
+		}
+
+		// End session (update timestamp)
+		if (this.state.session) {
+			try {
+				this.state.session.end();
+			} catch (e) {
+				console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error ending session: ${e}`);
+			}
+		}
+
+		// Cleanup state
+		this.state.currentGenerationId = null;
+		this.state.llmGenerationId = null;
+		this.state.currentGenerationType = null;
+		this.state.currentTraceId = null;
+		this.state.hasPendingToolCalls = false;
+		this.state.isContinuingTrace = false;
+		this.state.toolCallIds.clear();
+		this.state.toolCallOutputs.clear();
+		this.state.lastUserMessage = null;
+
+		// Clear audio state
+		this.state.isAudioInput = false;
+		this.state.pendingUserAudio = Buffer.alloc(0);
+		this.state.userAudioBuffer.clear();
+		this.state.currentItemId = null;
+		this.state.outputAudio = null;
+
+		// Clear finalization flag
+		this.state.pendingTraceFinalization = false;
 	}
 
 	/**
 	 * Handle session.created event.
 	 */
-	private handleSessionCreated(event: any): void {
+	private handleSessionCreated(event: SessionCreatedEvent): void {
 		try {
-			const session = event.session;
+			const session = event.session as RealtimeSessionCreateRequest;
 			this.state.systemInstructions = session?.instructions || null;
 			this.state.sessionModel = session?.model || null;
 
@@ -384,9 +345,9 @@ export class MaximOpenAIRealtimeWrapper {
 	/**
 	 * Handle session.updated event.
 	 */
-	private handleSessionUpdated(event: any): void {
+	private handleSessionUpdated(event: SessionUpdatedEvent): void {
 		try {
-			const session = event.session;
+			const session = event.session as RealtimeSessionCreateRequest;
 
 			if (session) {
 				// Update session config
@@ -394,16 +355,34 @@ export class MaximOpenAIRealtimeWrapper {
 					this.state.sessionConfig = { ...session };
 				} else {
 					for (const [key, value] of Object.entries(session)) {
-						if (value !== null && value !== undefined) {
+						if (key === "id") {
+							this.state.session?.addTag("sess_id", value);
+						}
+						if (key !== "id" && value !== null && value !== undefined) {
 							this.state.sessionConfig[key] = value;
 						}
 					}
 				}
 
+				const tools = session?.tools;
+				if (tools && Array.isArray(tools)) {
+					for (const tool of tools) {
+						if (tool.type === "function") {
+							if (tool.name) {
+								this.state.toolsConfig.set(tool.name, {
+									name: tool.name,
+									description: tool.description || `Function: ${tool.name}`,
+								});
+							}
+						}
+					}
+				}
+
+				const transcription = session.audio?.input?.transcription;
 				// Extract transcription settings
-				if (session.input_audio_transcription) {
-					this.state.transcriptionModel = session.input_audio_transcription.model || null;
-					this.state.transcriptionLanguage = session.input_audio_transcription.language || null;
+				if (transcription) {
+					this.state.transcriptionModel = transcription.model || null;
+					this.state.transcriptionLanguage = transcription.language || null;
 				}
 			}
 		} catch (e) {
@@ -412,9 +391,11 @@ export class MaximOpenAIRealtimeWrapper {
 	}
 
 	/**
-	 * Handle conversation.item.created event.
+	 * Handle conversation.item.added event.
+	 * - conversation.item.added: Server sends when audio buffer is committed (user speaks)
+	 * // Using this event instead of conversation.item.created because this event gets called once after the message is committed,
 	 */
-	private handleConversationItemCreated(event: any): void {
+	private handleConversationItemAdded(event: ConversationItemAdded): void {
 		try {
 			const item = event.item;
 			if (!item) return;
@@ -426,9 +407,11 @@ export class MaximOpenAIRealtimeWrapper {
 				// Check if it's audio input
 				if (item.content?.length > 0 && item.content[0]?.type === "input_audio") {
 					const itemId = item.id;
-					this.state.currentItemId = itemId;
+					this.state.currentItemId = itemId ?? null;
+					// Mark that this is audio input
+					this.state.isAudioInput = true;
 
-					if (this.state.pendingUserAudio.length > 0) {
+					if (this.state.pendingUserAudio.length > 0 && itemId) {
 						this.state.userAudioBuffer.set(itemId, this.state.pendingUserAudio);
 						this.state.pendingUserAudio = Buffer.alloc(0);
 					}
@@ -436,7 +419,7 @@ export class MaximOpenAIRealtimeWrapper {
 				}
 
 				// Extract text message
-				this.state.lastUserMessage = this.extractMessageContent(item);
+				this.state.lastUserMessage = extractMessageContent(item);
 			} else if (item.type === "function_call_output") {
 				const callId = item.call_id;
 				const output = item.output;
@@ -445,10 +428,10 @@ export class MaximOpenAIRealtimeWrapper {
 					const outputStr = typeof output === "string" ? output : String(output);
 					this.state.toolCallOutputs.set(callId, outputStr);
 
-					const toolCall = this.state.toolCalls.get(callId);
-					if (toolCall) {
+					// Use logger directly with tool call ID (container pattern)
+					if (this.state.toolCallIds.has(callId)) {
 						try {
-							toolCall.result(outputStr);
+							this.logger.toolCallResult(callId, outputStr);
 						} catch (e) {
 							console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error setting tool call result: ${e}`);
 						}
@@ -477,116 +460,180 @@ export class MaximOpenAIRealtimeWrapper {
 	/**
 	 * Handle response.created event.
 	 */
-	private handleResponseCreated(event: any): void {
+	private handleResponseCreated(event: ResponseCreateEvent): void {
 		try {
-			const response = event.response;
-
 			// Ensure session exists
 			this.getOrCreateSession();
 
+			// Reset output audio buffer for the new response
+			this.state.outputAudio = null;
+
+			// Get current trace container
+			let traceContainer = this.getCurrentTraceContainer();
+
 			// Check if we should continue an existing trace (after tool calls)
-			if (this.state.currentTrace && this.state.hasPendingToolCalls) {
+			if (traceContainer && this.state.hasPendingToolCalls) {
 				this.state.hasPendingToolCalls = false;
 				this.state.isContinuingTrace = true;
 			} else {
 				// End previous trace if exists
-				if (this.state.currentTrace) {
+				if (traceContainer) {
 					try {
-						this.state.currentTrace.end();
+						traceContainer.end();
 					} catch (e) {
 						console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error ending previous trace: ${e}`);
 					}
 				}
 
-				// Create new trace
+				// Create new trace using ContainerManager pattern
 				const traceId = uuid();
-				this.state.currentTrace = this.createTrace(traceId);
+				traceContainer = this.createTrace(traceId);
+				this.state.currentTraceId = traceId;
 				this.state.isContinuingTrace = false;
-				this.state.pendingUserAudio = Buffer.alloc(0);
+				// Clear generation IDs for new trace
+				this.state.sttGenerationId = null;
+				this.state.llmGenerationId = null;
 			}
-
-			// Create generation
-			const generationId = response?.id || uuid();
 
 			// Extract model parameters from session config
 			const modelParameters: Record<string, any> = {};
 			if (this.state.sessionConfig) {
 				for (const [key, value] of Object.entries(this.state.sessionConfig)) {
-					if (!["model", "instructions", "modalities"].includes(key)) {
+					if (!this.modelParametersToIgnore.includes(key) && value !== undefined && value !== null) {
 						modelParameters[key] = value;
+					}
+					if (key === "output_modalities" && value !== undefined && value !== null) {
+						if (Array.isArray(value) && value.length > 0) {
+							modelParameters["output_modalities"] = value[0];
+						}
+					}
+					if (key === "audio") {
+						modelParameters["maxim-audio-model-parameters"] = value;
 					}
 				}
 			}
 			this.state.currentModelParameters = modelParameters;
 
-			// Build messages
-			const messages: CompletionRequest[] = [];
-
-			// Add system message if instructions exist
-			if (this.state.sessionConfig?.["instructions"]) {
-				messages.push({
-					role: "system",
-					content: this.state.sessionConfig["instructions"],
-				});
-			}
-
-			// Add user message
-			if (this.state.lastUserMessage) {
-				messages.push({
-					role: "user",
-					content: this.state.lastUserMessage,
-				});
-
-				// Set trace input if this is a new trace
-				if (this.state.currentTrace && !this.state.isContinuingTrace) {
-					try {
-						this.state.currentTrace.input(this.state.lastUserMessage);
-					} catch (e) {
-						console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error setting trace input: ${e}`);
-					}
+			// For audio input on a NEW trace (not continuation), create 2 generations:
+			// 1. STT generation (empty, will be updated when transcription arrives)
+			// 2. LLM generation (with system message, model params)
+			if (this.state.isAudioInput && !this.state.isContinuingTrace) {
+				// Create STT generation (empty - will be updated by transcription handler)
+				const sttGenerationId = uuid();
+				try {
+					traceContainer.addGeneration({
+						id: sttGenerationId,
+						model: this.state.transcriptionModel || "whisper-1",
+						provider: "openai",
+						name: "User Speech Transcription",
+						modelParameters: this.state.transcriptionLanguage ? { language: this.state.transcriptionLanguage } : {},
+						messages: [], // Empty - will be updated when transcription arrives
+					});
+					this.state.sttGenerationId = sttGenerationId;
+				} catch (e) {
+					console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error creating STT generation: ${e}`);
 				}
-				this.state.lastUserMessage = null;
-			}
 
-			// Add tool call outputs if continuing trace (use pendingToolCallOutputs captured from send())
-			if (this.state.isContinuingTrace && this.state.pendingToolCallOutputs.size > 0) {
-				for (const [callId, output] of this.state.pendingToolCallOutputs.entries()) {
-					// Get the tool name for this call
-					const toolCall = this.state.toolCalls.get(callId);
+				// Create LLM generation (with system message)
+				const llmGenerationId = uuid();
+				const llmMessages: CompletionRequest[] = [];
+
+				// Add system message if instructions exist
+				if (this.state.sessionConfig?.["instructions"]) {
+					llmMessages.push({
+						role: "system",
+						content: this.state.sessionConfig["instructions"],
+					});
+				}
+
+				try {
+					traceContainer.addGeneration({
+						id: llmGenerationId,
+						model: this.state.sessionModel || "unknown",
+						provider: "openai",
+						name: this.state.generationName,
+						modelParameters,
+						messages: llmMessages,
+					});
+					this.state.currentGenerationId = llmGenerationId;
+					this.state.llmGenerationId = llmGenerationId; // Store for transcription handler
+					this.state.currentGenerationType = "llm";
+				} catch (e) {
+					console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error creating LLM generation: ${e}`);
+				}
+			} else {
+				// Non-audio input or continuation - create single generation
+				const generationId = uuid();
+				const messages: CompletionRequest[] = [];
+
+				// Add system message if instructions exist
+				if (this.state.sessionConfig?.["instructions"]) {
 					messages.push({
-						role: "tool",
-						content: output,
-						tool_call_id: callId,
-						name: toolCall ? (toolCall as any).name : undefined,
-					} as any);
+						role: "system",
+						content: this.state.sessionConfig["instructions"],
+					});
 				}
-				this.state.pendingToolCallOutputs.clear();
+
+				// Handle continuation (after tool calls)
+				if (this.state.isContinuingTrace) {
+					// Add tool outputs
+					if (this.state.toolCallOutputs.size > 0) {
+						for (const [callId, output] of this.state.toolCallOutputs.entries()) {
+							messages.push({
+								role: "tool",
+								content: output,
+								tool_call_id: callId,
+							} as any);
+						}
+						this.state.toolCallOutputs.clear();
+					}
+
+					// Clear lastUserMessage to prevent it from appearing in continuation
+					this.state.lastUserMessage = null;
+				} else if (this.state.lastUserMessage) {
+					// Text input - add user message
+					messages.push({
+						role: "user",
+						content: this.state.lastUserMessage,
+					});
+
+					// Set trace input for new trace
+					if (traceContainer) {
+						try {
+							traceContainer.setInput(this.state.lastUserMessage);
+						} catch (e) {
+							console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error setting trace input: ${e}`);
+						}
+					}
+					this.state.lastUserMessage = null;
+				}
+
+				try {
+					traceContainer.addGeneration({
+						id: generationId,
+						model: this.state.sessionModel || "unknown",
+						provider: "openai",
+						name: this.state.generationName,
+						modelParameters,
+						messages,
+					});
+					this.state.currentGenerationId = generationId;
+					this.state.currentGenerationType = "llm";
+				} catch (e) {
+					console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error creating generation: ${e}`);
+				}
 			}
 
-			// Create generation
-			try {
-				this.state.currentGeneration = this.state.currentTrace!.generation({
-					id: generationId,
-					model: this.state.sessionModel || "unknown",
-					provider: "openai",
-					name: this.state.generationName,
-					modelParameters,
-					messages,
-				});
-				this.state.currentGenerationId = generationId;
-				this.state.isContinuingTrace = false;
-			} catch (e) {
-				console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error creating generation: ${e}`);
-			}
+			this.state.isContinuingTrace = false;
 		} catch (e) {
 			console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error handling response.created: ${e}`);
 		}
 	}
 
 	/**
-	 * Handle response.audio.delta event.
+	 * Handle response.output_audio.delta event.
 	 */
-	private handleResponseAudioDelta(event: any): void {
+	private handleResponseOutputAudioDelta(event: ResponseAudioDeltaEvent): void {
 		try {
 			if (event.delta) {
 				const audioChunk = Buffer.from(event.delta, "base64");
@@ -597,16 +644,16 @@ export class MaximOpenAIRealtimeWrapper {
 				}
 			}
 		} catch (e) {
-			console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error handling response.audio.delta: ${e}`);
+			console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error handling response.output_audio.delta: ${e}`);
 		}
 	}
 
 	/**
 	 * Handle response.function_call_arguments.delta event.
 	 */
-	private handleFunctionCallArgumentsDelta(event: any): void {
+	private handleFunctionCallArgumentsDelta(event: ResponseFunctionCallArgumentsDeltaEvent): void {
 		try {
-			const callId = event.call_id;
+			const callId = event.item_id;
 			const delta = event.delta;
 
 			if (callId && delta) {
@@ -621,12 +668,15 @@ export class MaximOpenAIRealtimeWrapper {
 	/**
 	 * Handle response.function_call_arguments.done event.
 	 */
-	private handleFunctionCallArgumentsDone(event: any): void {
+	private handleFunctionCallArgumentsDone(event: ResponseFunctionCallArgumentsDoneEvent): void {
 		try {
+			// Use call_id to match with function_call_output (not item_id)
 			const callId = event.call_id;
 			const itemId = event.item_id;
-			let functionName = event.name;
-			const finalArguments = event.arguments || this.state.functionCallArguments.get(callId) || "";
+			// Note: The realtime event type doesn't include function name in its type definition,
+			// but at runtime it may be present. We'll try to access it and fall back to other methods.
+			let functionName: string | undefined = (event as any).name;
+			const finalArguments = event.arguments || this.state.functionCallArguments.get(itemId) || "";
 
 			// Try to get function name from arguments if not provided
 			if (!functionName) {
@@ -635,38 +685,37 @@ export class MaximOpenAIRealtimeWrapper {
 					if (argsDict.name) {
 						functionName = argsDict.name;
 					}
-				} catch {
-					// Ignore parsing errors
-				}
+				} catch {}
 			}
 
 			// Fallback name
 			if (!functionName) {
-				functionName = itemId ? `function_${itemId.slice(0, 8)}` : `function_${callId?.slice(0, 8) || "unknown"}`;
+				functionName = callId ? `function_${callId.slice(0, 8)}` : "unknown";
 			}
 
 			// Get the tool description from config
 			const toolConfig = this.state.toolsConfig.get(functionName);
 			const description = toolConfig?.description || `Function: ${functionName}`;
 
-			// Create tool call
-			if (this.state.currentTrace && callId) {
+			// Create tool call using container pattern
+			const traceContainer = this.getCurrentTraceContainer();
+			if (traceContainer && callId) {
 				try {
-					const toolCall = this.state.currentTrace.toolCall({
+					traceContainer.addToolCall({
 						id: callId,
 						name: functionName,
 						description,
 						args: finalArguments,
 					});
-					this.state.toolCalls.set(callId, toolCall);
+					this.state.toolCallIds.add(callId);
 				} catch (e) {
 					console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error creating tool call: ${e}`);
 				}
 			}
 
-			// Cleanup
-			if (callId) {
-				this.state.functionCallArguments.delete(callId);
+			// Cleanup - use itemId for the arguments map (which was keyed by item_id in delta handler)
+			if (itemId) {
+				this.state.functionCallArguments.delete(itemId);
 			}
 		} catch (e) {
 			console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error handling function call arguments done: ${e}`);
@@ -675,46 +724,109 @@ export class MaximOpenAIRealtimeWrapper {
 
 	/**
 	 * Handle conversation.item.input_audio_transcription.completed event.
+	 * This runs asynchronously - it updates existing generations without blocking the main flow.
 	 */
-	private handleInputAudioTranscriptionCompleted(event: any): void {
+	private handleInputAudioTranscriptionCompleted(event: ConversationItemInputAudioTranscriptionCompletedEvent): void {
 		try {
-			if (this.state.currentGenerationId && this.state.currentTrace) {
-				const modelParameters = this.state.currentModelParameters || {};
-				const transcript = event.transcript || "";
+			const transcript = event.transcript || "";
+			const itemId = event.item_id;
 
-				// End the current generation with STT result
-				if (this.state.currentGeneration) {
-					this.state.currentGeneration.setModel(this.state.transcriptionModel || "whisper-1");
-					this.state.currentGeneration.addMessages([
-						{ role: "user" as const, content: transcript },
-					]);
-					this.state.currentGeneration.setModelParameters({
-						language: this.state.transcriptionLanguage,
-					});
-					// Note: Generation name is set at creation time, we'll use a tag to mark this as STT
-					this.state.currentGeneration.addTag("type", "speech-to-text");
-					this.state.currentGeneration.result({
-						id: event.event_id || uuid(),
-						object: "stt.response",
-						created: Math.floor(Date.now() / 1000),
-						model: this.state.transcriptionModel || "whisper-1",
-						choices: [],
-						usage: {
-							prompt_tokens: event.logprobs?.input_tokens || 0,
-							completion_tokens: event.logprobs?.output_tokens || 0,
-							total_tokens: event.logprobs?.total_tokens || 0,
-						},
-					});
+			// Get user audio for this item
+			let userAudio: Buffer | null = null;
+			if (itemId && this.state.userAudioBuffer.has(itemId)) {
+				userAudio = this.state.userAudioBuffer.get(itemId)!;
+			}
+
+			// Update the STT generation if it exists
+			if (this.state.sttGenerationId) {
+				const sttGenerationId = this.state.sttGenerationId;
+
+				// Add user transcript to the STT generation
+				this.logger.generationAddMessage(sttGenerationId, [{ role: "user" as const, content: transcript }]);
+
+				// Attach user audio to STT generation
+				if (userAudio && userAudio.length > 0) {
+					try {
+						const wavBuffer = pcm16ToWav(userAudio);
+						const attachment: Attachment = {
+							type: "fileData",
+							id: uuid(),
+							name: "User Audio Input",
+							data: wavBuffer,
+							mimeType: "audio/wav",
+							tags: { "attach-to": "input" },
+						};
+						this.logger.generationAddAttachment(sttGenerationId, attachment);
+					} catch (e) {
+						console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error adding user audio to STT generation: ${e}`);
+					}
 				}
 
-				// Attach user audio if available
-				const itemId = event.item_id;
-				let userAudio: Buffer | null = null;
-				if (itemId && this.state.userAudioBuffer.has(itemId)) {
-					userAudio = this.state.userAudioBuffer.get(itemId)!;
+				// Build usage from event
+				let usage: Usage | undefined;
+				if (event.usage?.type === "tokens") {
+					usage = {
+						prompt_tokens: event.usage.input_tokens,
+						completion_tokens: event.usage.output_tokens,
+						total_tokens: event.usage.total_tokens,
+					};
+				} else {
+					usage = {
+						prompt_tokens: 0,
+						completion_tokens: 0,
+						total_tokens: 0,
+					};
+				}
+
+				// End the STT generation with result
+				this.logger.generationResult(sttGenerationId, {
+					id: event.event_id || uuid(),
+					object: "stt.response",
+					created: Math.floor(Date.now() / 1000),
+					model: this.state.transcriptionModel || "whisper-1",
+					choices: [], // STT has no assistant response
+					usage: usage,
+				});
+
+				// Explicitly end the STT generation
+				this.logger.generationEnd(sttGenerationId);
+			}
+
+			// Update the LLM generation if it exists (add user message)
+			// Use llmGenerationId (the original LLM generation) instead of currentGenerationId
+			// because currentGenerationId may have changed during continuations
+			if (this.state.llmGenerationId) {
+				// Add user transcript to the LLM generation
+				this.logger.generationAddMessage(this.state.llmGenerationId, [{ role: "user" as const, content: transcript }]);
+
+				// Also attach user audio to the LLM generation
+				if (userAudio && userAudio.length > 0) {
+					try {
+						const wavBuffer = pcm16ToWav(userAudio);
+						const attachment: Attachment = {
+							type: "fileData",
+							id: uuid(),
+							name: "User Audio Input",
+							data: wavBuffer,
+							mimeType: "audio/wav",
+							tags: { "attach-to": "input" },
+						};
+						this.logger.generationAddAttachment(this.state.llmGenerationId, attachment);
+					} catch (e) {
+						console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error adding user audio to LLM generation: ${e}`);
+					}
+				}
+			}
+
+			// Set trace input with the transcript
+			if (this.state.currentTraceId) {
+				try {
+					this.logger.traceInput(this.state.currentTraceId, transcript);
+
+					// Also attach user audio to the trace
 					if (userAudio && userAudio.length > 0) {
 						try {
-							const wavBuffer = this.pcm16ToWav(userAudio);
+							const wavBuffer = pcm16ToWav(userAudio);
 							const attachment: Attachment = {
 								type: "fileData",
 								id: uuid(),
@@ -723,39 +835,31 @@ export class MaximOpenAIRealtimeWrapper {
 								mimeType: "audio/wav",
 								tags: { "attach-to": "input" },
 							};
-							this.state.currentTrace.addAttachment(attachment);
+							this.logger.traceAddAttachment(this.state.currentTraceId, attachment);
 						} catch (e) {
-							console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error adding user audio attachment: ${e}`);
+							console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error adding user audio to trace: ${e}`);
 						}
 					}
-				}
-
-				// Create new generation for the assistant response
-				const generationId = uuid();
-				try {
-					this.state.currentGeneration = this.state.currentTrace.generation({
-						id: generationId,
-						provider: "openai",
-						model: this.state.sessionModel || "unknown",
-						name: this.state.generationName,
-						modelParameters,
-						messages: [{ role: "user" as const, content: transcript }],
-					});
-					this.state.currentGenerationId = generationId;
 				} catch (e) {
-					console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error creating assistant generation: ${e}`);
+					console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error setting trace input: ${e}`);
 				}
+			}
 
-				// Cleanup audio buffer
-				if (itemId) {
-					this.state.userAudioBuffer.delete(itemId);
-					if (this.state.currentItemId === itemId) {
-						this.state.currentItemId = null;
-					}
+			// Cleanup audio buffer for this specific item (transcription-related state only)
+			if (itemId) {
+				this.state.userAudioBuffer.delete(itemId);
+				if (this.state.currentItemId === itemId) {
+					this.state.currentItemId = null;
 				}
-			} else {
-				// No current generation - save transcript for later
-				this.state.lastUserMessage = event.transcript || "";
+			}
+
+			// Clear sttGenerationId now that we've processed the transcription
+			this.state.sttGenerationId = null;
+
+			// If response.done was waiting for us, finalize the trace now
+			if (this.state.pendingTraceFinalization) {
+				const traceContainer = this.getCurrentTraceContainer();
+				this.finalizeTrace(traceContainer);
 			}
 		} catch (e) {
 			console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error handling input audio transcription completed: ${e}`);
@@ -764,8 +868,10 @@ export class MaximOpenAIRealtimeWrapper {
 
 	/**
 	 * Handle response.done event.
+	 * No longer waits for transcription - processes immediately.
+	 * Transcription updates are handled asynchronously in handleInputAudioTranscriptionCompleted.
 	 */
-	private handleResponseDone(event: any): void {
+	private handleResponseDone(event: ResponseDoneEvent): void {
 		try {
 			const response = event.response;
 			const responseId = response?.id || uuid();
@@ -783,7 +889,7 @@ export class MaximOpenAIRealtimeWrapper {
 				if (outputItem?.type === "message") {
 					// Extract text from message content
 					if (!responseText) {
-						responseText = this.extractOutputText(outputItem);
+						responseText = extractOutputText(outputItem);
 					}
 				} else if (outputItem?.type === "function_call") {
 					const callId = outputItem.call_id || outputItem.id || uuid();
@@ -814,107 +920,109 @@ export class MaximOpenAIRealtimeWrapper {
 				};
 			}
 
+			const choices: ChatCompletionChoice[] = [];
+
+			choices.push({
+				index: 0,
+				message: {
+					role: "assistant",
+					content: responseText,
+					tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+				},
+				logprobs: null,
+				finish_reason: toolCalls.length > 0 ? "tool_calls" : "stop",
+			});
+
 			// Build result
-			const result: any = {
+			const result: ChatCompletionResult = {
 				id: responseId,
 				object: "realtime.response",
 				created: Math.floor(Date.now() / 1000),
 				model: this.state.sessionModel || "unknown",
-				choices: [
-					{
-						index: 0,
-						message: {
-							role: "assistant",
-							content: responseText,
-							tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
-						},
-						finish_reason: toolCalls.length > 0 ? "tool_calls" : "stop",
-					},
-				],
+				choices,
+				usage: usage !== undefined ? usage : { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
 			};
 
-			if (usage) {
-				result.usage = usage;
-			}
-
-			// Log result
-			if (this.state.currentGeneration) {
+			// Log result using logger methods (container pattern)
+			if (this.state.currentGenerationId) {
 				try {
-					this.state.currentGeneration.result(result);
-
-					// Attach output audio if available
-					if (this.state.outputAudio && this.state.outputAudio.length > 0) {
-						try {
-							const wavBuffer = this.pcm16ToWav(this.state.outputAudio);
-							const attachment: Attachment = {
-								type: "fileData",
-								id: uuid(),
-								name: "Assistant Audio Response",
-								data: wavBuffer,
-								mimeType: "audio/wav",
-								tags: { "attach-to": "output" },
-							};
-							if (this.state.currentTrace) {
-								this.state.currentTrace.addAttachment(attachment);
-							}
-						} catch (e) {
-							console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error adding output audio attachment: ${e}`);
-						}
-						this.state.outputAudio = null;
-					}
+					this.logger.generationResult(this.state.currentGenerationId, result);
 				} catch (e) {
 					console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error logging generation result: ${e}`);
 				}
+
+				// Attach output audio to generation only (trace inherits from generation)
+				if (this.state.outputAudio && this.state.outputAudio.length > 0) {
+					try {
+						const wavBuffer = pcm16ToWav(this.state.outputAudio);
+						const attachment = {
+							type: "fileData" as const,
+							name: "Assistant Audio Response",
+							data: wavBuffer,
+							mimeType: "audio/wav",
+							tags: { "attach-to": "output" },
+						};
+						if (this.state.currentTraceId) {
+							this.logger.traceAddAttachment(this.state.currentTraceId, {
+								id: uuid(),
+								...attachment,
+							});
+						}
+						this.logger.generationAddAttachment(this.state.currentGenerationId, {
+							id: uuid(),
+							...attachment,
+						});
+					} catch (e) {
+						console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error adding output audio attachment: ${e}`);
+					}
+				} else {
+				}
+				// Always clear output audio after attempting attachment
+				this.state.outputAudio = null;
 			}
 
 			// Handle trace ending
 			const hasToolCalls = toolCalls.length > 0;
+			const traceContainer = this.getCurrentTraceContainer();
+
 			if (hasToolCalls) {
 				// Keep trace open for next response
 				this.state.hasPendingToolCalls = true;
-			} else {
-				// End trace
-				if (this.state.currentTrace) {
-					try {
-						if (responseText) {
-							this.state.currentTrace.output(responseText);
-						}
-						this.state.currentTrace.end();
-					} catch (e) {
-						console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error ending trace: ${e}`);
-					}
-				}
-
-				// End session (update timestamp)
-				if (this.state.session) {
-					try {
-						this.state.session.end();
-					} catch (e) {
-						console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error ending session: ${e}`);
-					}
-				}
-
-				// Cleanup
-				this.state.currentGenerationId = null;
-				this.state.currentTrace = null;
-				this.state.hasPendingToolCalls = false;
-				this.state.isContinuingTrace = false;
-				this.state.toolCalls.clear();
-				this.state.toolCallOutputs.clear();
+				// Clear lastUserMessage to prevent it from appearing in continuation generation
 				this.state.lastUserMessage = null;
+			} else {
+				// Set trace output
+				if (traceContainer && this.state.currentTraceId && responseText) {
+					try {
+						this.logger.traceOutput(this.state.currentTraceId, responseText);
+					} catch (e) {
+						console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error setting trace output: ${e}`);
+					}
+				}
+
+				// Check if we're still waiting for audio transcription
+				const waitingForTranscription = this.state.sttGenerationId !== null;
+
+				if (waitingForTranscription) {
+					// Mark that we need to finalize the trace after transcription completes
+					this.state.pendingTraceFinalization = true;
+				} else {
+					// End trace immediately
+					this.finalizeTrace(traceContainer);
+				}
 			}
 
 			// Always clear function call tracking
 			this.state.functionCallArguments.clear();
 		} catch (e) {
-			console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error handling response.done: ${e}`);
+			console.warn(`[MaximSDK][MaximOpenAIRealtimeWrapper] Error processing response.done: ${e}`);
 		}
 	}
 
 	/**
 	 * Handle error event.
 	 */
-	private handleError(event: any): void {
+	private handleError(event: RealtimeErrorEvent): void {
 		try {
 			const errorObj = event.error || event;
 			let errorMessage = String(errorObj);
@@ -923,9 +1031,10 @@ export class MaximOpenAIRealtimeWrapper {
 				errorMessage = String(errorObj.message);
 			}
 
-			if (this.state.currentGeneration) {
+			// Use logger methods for error handling (container pattern)
+			if (this.state.currentGenerationId) {
 				try {
-					this.state.currentGeneration.error({
+					this.logger.generationError(this.state.currentGenerationId, {
 						message: errorMessage,
 						type: errorObj?.type || "RealtimeError",
 					});
@@ -939,108 +1048,19 @@ export class MaximOpenAIRealtimeWrapper {
 	}
 
 	/**
-	 * Extract message content from a conversation item.
-	 */
-	private extractMessageContent(item: any): string {
-		const content = item.content;
-		if (!content) return "";
-
-		if (typeof content === "string") return content;
-
-		if (Array.isArray(content)) {
-			const parts: string[] = [];
-			for (const contentItem of content) {
-				if (typeof contentItem === "string") {
-					parts.push(contentItem);
-				} else if (contentItem?.type === "input_text") {
-					parts.push(contentItem.text || "");
-				} else if (contentItem?.type === "input_audio") {
-					const transcript = contentItem.transcript;
-					if (transcript) {
-						parts.push(transcript);
-					} else {
-						parts.push("[audio]");
-					}
-				} else if (contentItem?.type === "input_image") {
-					parts.push("[image]");
-				} else if (contentItem?.type === "input_file") {
-					parts.push("[file]");
-				}
-			}
-			return parts.join("");
-		}
-
-		return String(content);
-	}
-
-	/**
-	 * Extract output text from a response message.
-	 */
-	private extractOutputText(item: any): string {
-		const content = item.content;
-		if (!content) return "";
-
-		if (typeof content === "string") return content;
-
-		if (Array.isArray(content)) {
-			const parts: string[] = [];
-			for (const contentItem of content) {
-				if (contentItem?.type === "output_text") {
-					parts.push(contentItem.text || "");
-				} else if (contentItem?.type === "output_audio") {
-					parts.push(contentItem.transcript || "");
-				}
-			}
-			return parts.join("");
-		}
-
-		return "";
-	}
-
-	/**
-	 * Convert PCM16 audio data to WAV format.
-	 */
-	private pcm16ToWav(pcmData: Buffer, sampleRate: number = 24000, channels: number = 1): Buffer {
-		const byteRate = sampleRate * channels * 2; // 16-bit = 2 bytes
-		const blockAlign = channels * 2;
-		const dataSize = pcmData.length;
-		const headerSize = 44;
-		const fileSize = headerSize + dataSize;
-
-		const buffer = Buffer.alloc(fileSize);
-
-		// RIFF header
-		buffer.write("RIFF", 0);
-		buffer.writeUInt32LE(fileSize - 8, 4);
-		buffer.write("WAVE", 8);
-
-		// fmt subchunk
-		buffer.write("fmt ", 12);
-		buffer.writeUInt32LE(16, 16); // Subchunk1Size
-		buffer.writeUInt16LE(1, 20); // AudioFormat (PCM)
-		buffer.writeUInt16LE(channels, 22);
-		buffer.writeUInt32LE(sampleRate, 24);
-		buffer.writeUInt32LE(byteRate, 28);
-		buffer.writeUInt16LE(blockAlign, 32);
-		buffer.writeUInt16LE(16, 34); // BitsPerSample
-
-		// data subchunk
-		buffer.write("data", 36);
-		buffer.writeUInt32LE(dataSize, 40);
-		pcmData.copy(buffer, 44);
-
-		return buffer;
-	}
-
-	/**
 	 * Cleanup and detach event listeners.
 	 * Call this when you're done with the wrapper.
+	 * Returns a promise that resolves when the queue is drained.
 	 */
-	public cleanup(): void {
-		// End any open trace/session
-		if (this.state.currentTrace) {
+	public async cleanup(): Promise<void> {
+		// Wait for any pending events in the queue to finish processing
+		await this.waitForQueueDrain();
+
+		// End any open trace using container pattern
+		const traceContainer = this.getCurrentTraceContainer();
+		if (traceContainer) {
 			try {
-				this.state.currentTrace.end();
+				traceContainer.end();
 			} catch {
 				// Ignore
 			}
@@ -1063,6 +1083,31 @@ export class MaximOpenAIRealtimeWrapper {
 			}
 		}
 		this.boundHandlers.clear();
+
+		// Restore original send method
+		if (this.originalSend) {
+			this.realtimeClient.send = this.originalSend;
+			this.originalSend = null;
+		}
+	}
+
+	/**
+	 * Wait for the event queue to drain.
+	 * Useful for ensuring all pending events are processed before cleanup.
+	 */
+	public async waitForQueueDrain(): Promise<void> {
+		// If queue is idle, return immediately
+		if (this.eventQueue.isIdle) {
+			return;
+		}
+
+		// Otherwise, enqueue a no-op task and wait for it to complete
+		// This ensures all prior tasks have finished
+		return new Promise<void>((resolve) => {
+			this.eventQueue.enqueue(async () => {
+				resolve();
+			});
+		});
 	}
 
 	/**
@@ -1106,10 +1151,9 @@ export class MaximOpenAIRealtimeWrapper {
  * ```
  */
 export function wrapOpenAIRealtime(
-	realtimeClient: any,
+	realtimeClient: OpenAIRealtimeWS,
 	logger: MaximLogger,
 	headers?: MaximRealtimeHeaders,
 ): MaximOpenAIRealtimeWrapper {
 	return new MaximOpenAIRealtimeWrapper(realtimeClient, logger, headers);
 }
-

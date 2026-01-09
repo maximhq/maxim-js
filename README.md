@@ -523,6 +523,9 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.26.0
+- feat: Adds OpenAI one line integration for Chat completions, Responses and Realtime API
+
 ### v6.25.0
 
 - feat: Adds new optional fields `startTimestamp` and `endTimestamp` for overriding timestamps for logs.

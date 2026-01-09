@@ -313,10 +313,10 @@ export class MaximOpenAIResponses {
 		let traceTags: string | undefined;
 
 		if (extraHeaders) {
-			traceId = extraHeaders["x-maxim-trace-id"] || undefined;
-			generationName = extraHeaders["x-maxim-generation-name"] || undefined;
-			sessionId = extraHeaders["x-maxim-session-id"] || undefined;
-			traceTags = extraHeaders["x-maxim-trace-tags"] || undefined;
+			traceId = extraHeaders["maxim-trace-id"] || undefined;
+			generationName = extraHeaders["maxim-generation-name"] || undefined;
+			sessionId = extraHeaders["maxim-session-id"] || undefined;
+			traceTags = extraHeaders["maxim-trace-tags"] || undefined;
 		}
 
 		const isLocalTrace = traceId === undefined;
