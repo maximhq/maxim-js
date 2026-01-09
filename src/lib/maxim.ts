@@ -1,3 +1,6 @@
+import { ChatCompletionResult, GenerationConfig } from "../lib/logger/components/generation";
+import { Span } from "../lib/logger/components/span";
+import { Trace } from "../lib/logger/components/trace";
 import { MaximDatasetAPI } from "./apis/dataset";
 import { MaximFolderAPI } from "./apis/folder";
 import { MaximLogsAPI } from "./apis/logs";
@@ -7,15 +10,25 @@ import { MaximCache } from "./cache/cache";
 import { MaximInMemoryCache } from "./cache/inMemory";
 import { IncomingQuery, QueryObject, findAllMatches, findBestMatch, parseIncomingQuery } from "./filterObjects";
 import { LoggerConfig, MaximLogger } from "./logger/logger";
+import { uniqueId } from "./logger/utils";
 import type { DatasetEntry } from "./models/dataset";
 import { RuleGroupType } from "./models/deployment";
 import { Folder } from "./models/folder";
-import { ImageUrl, Prompt, PromptVersionsAndRules } from "./models/prompt";
+import {
+	ChatCompletionMessage,
+	CompletionRequest,
+	ImageUrl,
+	Prompt,
+	PromptResponse,
+	PromptVersion,
+	PromptVersionsAndRules,
+} from "./models/prompt";
 import { PromptChain, PromptChainVersionsAndRules } from "./models/promptChain";
 import { QueryRule } from "./models/queryBuilder";
 import { type TestRunBuilder } from "./models/testRun";
-import { createTestRunBuilder } from "./testRun/testRun";
 import { platform } from "./platform";
+
+import { createTestRunBuilder } from "./testRun/testRun";
 import ExpiringKeyValueStore from "./utils/expiringKeyValueStore";
 
 declare global {
@@ -455,6 +468,7 @@ export class Maxim {
 	}
 
 	private getPromptVersionForRule(promptVersionAndRules: PromptVersionsAndRules, rule?: QueryRule): Prompt | undefined {
+		const sdk = this;
 		try {
 			if (rule) {
 				let incomingQuery: IncomingQuery = {
@@ -504,23 +518,36 @@ export class Maxim {
 				const deployedVersionObject = findBestMatch(objects, incomingQuery);
 				if (deployedVersionObject) {
 					const deployedVersion = promptVersionAndRules?.versions.find((v) => v.id === deployedVersionObject.id);
-					return {
+					let prompt: Prompt;
+					prompt = {
 						promptId: deployedVersion!.promptId,
 						versionId: deployedVersion!.id,
 						version: deployedVersion!.version,
 						messages: deployedVersion!.config?.messages,
-						modelParameters: deployedVersion!.config?.modelParameters,
-						model: deployedVersion!.config?.model,
+						modelParameters: deployedVersion!.config?.modelParameters || {},
+						model: deployedVersion!.config?.model || "",
 						deploymentId: deployedVersion!.config?.deploymentId,
-						provider: deployedVersion!.config?.provider,
-						tags: deployedVersion!.config?.tags,
-						run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => {
+						provider: deployedVersion!.config?.provider || "",
+						tags: deployedVersion!.config?.tags || {},
+						run: async function (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) {
 							if (!deployedVersion) {
 								throw new Error("[Maxim-SDK] Deployed version missing while attempting to run prompt");
 							}
-							return this.APIService.prompt.runPromptVersion(deployedVersion.id, input, options);
+
+							return executePromptWithLogging(this.parent, this.generationConfig, deployedVersion, options, () =>
+								sdk.APIService.prompt.runPromptVersion(deployedVersion.id, input, options),
+							);
+						},
+						withLogger: function (parent, generationConfig) {
+							const newPrompt: Prompt = {
+								...this,
+								parent,
+								generationConfig,
+							};
+							return newPrompt;
 						},
 					} as Prompt;
+					return prompt;
 				}
 			} else {
 				// Checking version rules with rule being undefined
@@ -535,39 +562,68 @@ export class Maxim {
 					}
 					if (isMatch) {
 						const deployedVersion = promptVersionAndRules.versions.find((v) => v.id === versionId);
-						return {
+						let prompt: Prompt;
+						prompt = {
 							promptId: deployedVersion!.promptId,
 							versionId: deployedVersion!.id,
 							version: deployedVersion!.version,
 							messages: deployedVersion!.config?.messages,
-							modelParameters: deployedVersion!.config?.modelParameters,
-							model: deployedVersion!.config?.model,
+							modelParameters: deployedVersion!.config?.modelParameters || {},
+							model: deployedVersion!.config?.model || "",
 							deploymentId: deployedVersion!.config?.deploymentId,
-							provider: deployedVersion!.config?.provider,
-							tags: deployedVersion!.config?.tags,
-							run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => {
+							provider: deployedVersion!.config?.provider || "",
+							tags: deployedVersion!.config?.tags || {},
+							run: async function (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) {
 								if (!deployedVersion) {
 									throw new Error("[Maxim-SDK] Deployed version missing while attempting to run prompt");
 								}
-								return this.APIService.prompt.runPromptVersion(deployedVersion.id, input, options);
+								return executePromptWithLogging(this.parent, this.generationConfig, deployedVersion, options, () =>
+									sdk.APIService.prompt.runPromptVersion(deployedVersion.id, input, options),
+								);
+							},
+							withLogger: function (parent, generationConfig) {
+								const newPrompt: Prompt = {
+									...this,
+									parent,
+									generationConfig,
+								};
+								return newPrompt;
 							},
 						} as Prompt;
+						return prompt;
 					}
 				}
 			}
 			if (promptVersionAndRules.fallbackVersion) {
-				return {
+				let prompt: Prompt;
+				prompt = {
 					promptId: promptVersionAndRules.fallbackVersion!.promptId,
 					versionId: promptVersionAndRules.fallbackVersion!.id,
 					version: promptVersionAndRules.fallbackVersion!.version,
-					...promptVersionAndRules.fallbackVersion.config!,
-					run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => {
+					...promptVersionAndRules.fallbackVersion.config,
+					messages: promptVersionAndRules.fallbackVersion.config?.messages || [],
+					modelParameters: promptVersionAndRules.fallbackVersion.config?.modelParameters || {},
+					model: promptVersionAndRules.fallbackVersion.config?.model || "",
+					provider: promptVersionAndRules.fallbackVersion.config?.provider || "",
+					tags: promptVersionAndRules.fallbackVersion.config?.tags || {},
+					run: async function (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) {
 						if (!promptVersionAndRules.fallbackVersion?.id) {
 							throw new Error("[Maxim-SDK] Deployed fallback version missing while attempting to run prompt");
 						}
-						return this.APIService.prompt.runPromptVersion(promptVersionAndRules.fallbackVersion.id, input, options);
+						return executePromptWithLogging(this.parent, this.generationConfig, promptVersionAndRules.fallbackVersion!, options, () =>
+							sdk.APIService.prompt.runPromptVersion(promptVersionAndRules.fallbackVersion!.id, input, options),
+						);
+					},
+					withLogger: function (parent, generationConfig) {
+						const newPrompt: Prompt = {
+							...this,
+							parent,
+							generationConfig,
+						};
+						return newPrompt;
 					},
 				} as Prompt;
+				return prompt;
 			}
 			return undefined;
 		} catch (err) {
@@ -772,6 +828,7 @@ export class Maxim {
 	 * const prompt = await maxim.getPrompt('support-template', rule);
 	 */
 	public async getPrompt(promptId: string, rule: QueryRule): Promise<Prompt | undefined> {
+		const sdk = this;
 		try {
 			if (!this.isPromptManagementEnabled) {
 				throw new Error("Prompt Management feature is not enabled. Please enable it in the configuration.");
@@ -797,7 +854,8 @@ export class Maxim {
 				if (!deployedVersion) {
 					throw new Error(`No version ${num} found for Prompt ${promptId}`);
 				}
-				const prompt: Prompt = {
+				let prompt: Prompt;
+				prompt = {
 					promptId: deployedVersion.promptId,
 					versionId: deployedVersion.id,
 					version: deployedVersion.version,
@@ -807,8 +865,18 @@ export class Maxim {
 					deploymentId: deployedVersion.config?.deploymentId,
 					provider: deployedVersion.config?.provider || "",
 					tags: deployedVersion.config?.tags || {},
-					run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => {
-						return this.APIService.prompt.runPromptVersion(deployedVersion.id, input, options);
+					run: async function (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) {
+						return executePromptWithLogging(this.parent, this.generationConfig, deployedVersion, options, () =>
+							sdk.APIService.prompt.runPromptVersion(deployedVersion.id, input, options),
+						);
+					},
+					withLogger: function (parent, generationConfig) {
+						const newPrompt: Prompt = {
+							...this,
+							parent,
+							generationConfig,
+						};
+						return newPrompt;
 					},
 				};
 				this.promptVersionByNumberCache.set(cacheKey, prompt, 60);
@@ -1337,5 +1405,72 @@ export class Maxim {
 				console.error(`[Maxim-SDK] Error while cleaning up: ${err instanceof Error ? err.message : err}`);
 			}
 		}
+	}
+}
+
+async function executePromptWithLogging(
+	parent: Trace | Span | undefined,
+	generationConfig: Partial<Omit<GenerationConfig, "messages" | "provider" | "model" | "modelParameters">> | undefined,
+	deployedVersion: PromptVersion,
+	options: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } } | undefined,
+	executor: () => Promise<PromptResponse>,
+): Promise<PromptResponse> {
+	if (!parent) {
+		return executor();
+	}
+
+	const generationId = generationConfig?.id || uniqueId();
+	let resolvedMessages: (CompletionRequest | ChatCompletionMessage)[] = [];
+
+	const generation = parent.generation({
+		id: generationId,
+		model: deployedVersion.config?.model || "",
+		provider: (deployedVersion.config?.provider || "") as any,
+		messages: resolvedMessages,
+		modelParameters: deployedVersion.config?.modelParameters || {},
+		...generationConfig,
+	});
+
+	try {
+		const result = await executor();
+
+		resolvedMessages = result.resolvedMessages || [];
+		if (resolvedMessages && resolvedMessages.length > 0 && "payload" in (resolvedMessages[0] as any)) {
+			resolvedMessages = resolvedMessages.map((m: any) => m.payload);
+		}
+
+		generation.addMessages(resolvedMessages);
+
+		if (options?.variables) {
+			generation.addMetadata({ ...options.variables });
+		}
+
+		const logResult: ChatCompletionResult = {
+			id: result.id,
+			object: "chat.completion",
+			created: Math.floor(Date.now() / 1000),
+			model: result.model,
+			choices: result.choices.map((c) => ({
+				index: c.index,
+				message: c.message,
+				logprobs: null,
+				finish_reason: c.finishReason,
+			})),
+			usage: {
+				prompt_tokens: result.usage.promptTokens,
+				completion_tokens: result.usage.completionTokens,
+				total_tokens: result.usage.totalTokens,
+			},
+		};
+
+		generation.result(logResult);
+		return result;
+	} catch (e: any) {
+		generation.error({
+			message: e.message,
+			code: e.code,
+		});
+
+		throw e;
 	}
 }

@@ -91,6 +91,7 @@ export class MaximPromptAPI extends MaximAPI {
 								totalTokens: responseData.usage.total_tokens,
 								latency: responseData.usage.latency,
 							},
+							resolvedMessages: response.resolvedMessages,
 						});
 					}
 				})

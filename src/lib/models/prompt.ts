@@ -1,3 +1,6 @@
+import { GenerationConfig } from "../logger/components/generation";
+import { Span } from "../logger/components/span";
+import { Trace } from "../logger/components/trace";
 import { DeploymentVersionDeploymentConfig } from "./deployment";
 
 export type PromptTags = {
@@ -248,6 +251,7 @@ export type PromptResponse = {
 	usage: Usage;
 	modelParams: { [key: string]: any };
 	toolCallResults?: Array<ToolCallResult>;
+	resolvedMessages?: (CompletionRequest | ChatCompletionMessage)[];
 };
 
 export type Prompt = {
@@ -261,6 +265,12 @@ export type Prompt = {
 	provider: string;
 	tags: PromptTags;
 	run: (input: string, options?: { imageUrls?: ImageUrl[]; variables?: { [key: string]: string } }) => Promise<PromptResponse>;
+	withLogger: (
+		parent: Trace | Span,
+		generationConfig?: Partial<Omit<GenerationConfig, "messages" | "provider" | "model" | "modelParameters">>,
+	) => Prompt;
+	parent?: Trace | Span;
+	generationConfig?: Partial<GenerationConfig>;
 };
 
 export type PromptTagValues = {
@@ -308,9 +318,9 @@ export type MaximApiPromptRunResponse = {
 	data: Omit<PromptResponse, "usage" | "toolCallResults"> & {
 		usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; latency: number };
 		toolCallResults?: {
-			version: number;
 			results: Array<ToolCallResult>;
 		};
 	};
+	resolvedMessages?: (CompletionRequest | ChatCompletionMessage)[];
 	error?: { message: string };
 };
