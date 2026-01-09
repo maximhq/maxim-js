@@ -2,6 +2,7 @@ import type OpenAI from "openai";
 import type { MaximLogger } from "../logger";
 import { MaximOpenAIChat } from "./chat";
 import { MaximOpenAIResponses } from "./responses";
+import { MaximOpenAIRealtimeWrapper, type MaximRealtimeHeaders } from "./realtime";
 
 /**
  * A wrapped OpenAI client that automatically logs all chat completions and responses to Maxim.
@@ -109,5 +110,51 @@ export class MaximOpenAIClient {
 	 */
 	get responses(): MaximOpenAIResponses {
 		return this._responses;
+	}
+
+	/**
+	 * Wraps an OpenAI Realtime client with automatic Maxim logging.
+	 *
+	 * The Realtime API uses WebSocket connections which are created separately
+	 * from the standard OpenAI client. This method wraps an existing realtime
+	 * client instance to enable automatic logging of all realtime events.
+	 *
+	 * @param realtimeClient - The OpenAI Realtime client (OpenAIRealtimeWS or OpenAIRealtimeWebSocket)
+	 * @param headers - Optional headers for session/generation metadata
+	 * @returns A wrapper that logs realtime events to Maxim
+	 *
+	 * @example
+	 * ```typescript
+	 * import { OpenAIRealtimeWS } from 'openai/realtime/ws';
+	 * import { Maxim, MaximOpenAIClient } from '@maximai/maxim-js';
+	 *
+	 * const maxim = new Maxim({ apiKey: process.env.MAXIM_API_KEY });
+	 * const logger = await maxim.logger({ id: 'my-app' });
+	 *
+	 * const openai = new OpenAI();
+	 * const client = new MaximOpenAIClient(openai, logger);
+	 *
+	 * // Create the realtime client separately
+	 * const rt = new OpenAIRealtimeWS({ model: 'gpt-4o-realtime-preview' });
+	 *
+	 * // Wrap it with Maxim logging
+	 * const wrapper = client.wrapRealtime(rt, {
+	 *   'maxim-session-name': 'Voice Assistant Session'
+	 * });
+	 *
+	 * // Use rt normally - all events are automatically logged
+	 * rt.socket.on('open', () => {
+	 *   rt.send({
+	 *     type: 'session.update',
+	 *     session: { modalities: ['text', 'audio'] }
+	 *   });
+	 * });
+	 *
+	 * // Remember to cleanup when done
+	 * // wrapper.cleanup();
+	 * ```
+	 */
+	wrapRealtime(realtimeClient: any, headers?: MaximRealtimeHeaders): MaximOpenAIRealtimeWrapper {
+		return new MaximOpenAIRealtimeWrapper(realtimeClient, this.logger, headers);
 	}
 }
