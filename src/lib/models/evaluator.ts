@@ -48,10 +48,10 @@ export type VariableMappingInput = {
 	[key: string]: unknown;
 };
 
-export type VariableMappingFunction = (
+export type VariableMappingFunction<T extends DataStructure | undefined = undefined> = (
 	run: VariableMappingInput,
-	dataset?: Record<string, any>,
-	version?: { id?: string; [key: string]: any },
+	dataset?: Data<T>,
+	version?: { id?: string; type: "workflow" | "prompt" | "promptChain" },
 ) => string | undefined;
 
 /**
@@ -67,9 +67,20 @@ export type VariableMappingFunction = (
  */
 export type VariableMapping = Record<string, VariableMappingFunction>;
 
+export interface Result {
+	output: string;
+	contextToEvaluate?: string | string[];
+}
+
+export type LocalEvaluationFunction<T extends DataStructure | undefined = undefined> = (
+	result: Result,
+	data: Data<T>,
+	variables: Record<string, string>,
+) => Promise<LocalEvaluatorReturnType> | LocalEvaluatorReturnType;
+
 export type LocalEvaluatorType<T extends DataStructure | undefined = undefined> = {
 	name: string;
-	evaluationFunction: (result: Record<string, any>, data: Data<T>) => Promise<LocalEvaluatorReturnType> | LocalEvaluatorReturnType;
+	evaluationFunction: LocalEvaluationFunction<T>;
 	passFailCriteria: PassFailCriteriaType;
 	/**
 	 * Optional map of functions to extract values from the output object.
@@ -82,8 +93,9 @@ export type LocalEvaluatorType<T extends DataStructure | undefined = undefined> 
 export type CombinedLocalEvaluatorType<T extends DataStructure | undefined, U extends Record<string, PassFailCriteriaType>> = {
 	names: ReadonlyArray<keyof U>;
 	evaluationFunction: (
-		result: Record<string, any>,
+		result: Result,
 		data: Data<T>,
+		variables: Record<string, string>,
 	) => Promise<Record<keyof U, LocalEvaluatorReturnType>> | Record<keyof U, LocalEvaluatorReturnType>;
 	passFailCriteria: U;
 	/**

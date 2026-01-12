@@ -19,8 +19,8 @@ help:
 	@echo "  test-ci     - Run tests (ignore failures for missing config)"
 	@echo "  build       - Build the library (with TypeScript optimization)"
 	@echo "  version     - Update version in package.json (usage: make version VERSION=1.0.0)"
-	@echo "  publish     - Publish to npm with git tag and GitHub release (uses version from package.json, extracts notes from README.md)"
-	@echo "  release     - Publish with custom release notes (usage: make release NOTES='Release notes')"
+	@echo "  publish     - Publish to npm with git tag and GitHub release (usage: make publish [OTP=123456] or [AUTH_TYPE=web])"
+	@echo "  release     - Publish with custom release notes (usage: make release [NOTES='Release notes'] [OTP=123456] or [AUTH_TYPE=web])"
 	@echo "  preview-release - Preview release notes from README.md (usage: make preview-release [NOTES='Notes'])"
 	@echo "  test-readme-parsing - Test README.md parsing for debugging (usage: make test-readme-parsing [VERSION=1.0.0])"
 	@echo "  create-release - Create git tag and GitHub release (usage: make create-release VERSION=1.0.0 [NOTES='Notes'])"
@@ -98,7 +98,13 @@ publish: build
 	@set -e; \
 	VERSION=$$(node -p "require('./package.json').version"); \
 	echo "Publishing version $$VERSION..."; \
-	node publish.mjs $(PACKAGE_NAME) $$VERSION; \
+	if [ -n "$(AUTH_TYPE)" ]; then \
+		node publish.mjs $(PACKAGE_NAME) $$VERSION --auth-type=$(AUTH_TYPE); \
+	elif [ -n "$(OTP)" ]; then \
+		node publish.mjs $(PACKAGE_NAME) $$VERSION --otp=$(OTP); \
+	else \
+		node publish.mjs $(PACKAGE_NAME) $$VERSION; \
+	fi; \
 	echo "Creating git tag and GitHub release..."; \
 	$(MAKE) create-release VERSION=$$VERSION
 
@@ -213,7 +219,13 @@ release: build
 	else \
 		echo "No custom notes provided, will extract from README.md"; \
 	fi; \
-	node publish.mjs $(PACKAGE_NAME) $$VERSION; \
+	if [ -n "$(AUTH_TYPE)" ]; then \
+		node publish.mjs $(PACKAGE_NAME) $$VERSION --auth-type=$(AUTH_TYPE); \
+	elif [ -n "$(OTP)" ]; then \
+		node publish.mjs $(PACKAGE_NAME) $$VERSION --otp=$(OTP); \
+	else \
+		node publish.mjs $(PACKAGE_NAME) $$VERSION; \
+	fi; \
 	echo "Creating git tag and GitHub release..."; \
 	$(MAKE) create-release VERSION=$$VERSION NOTES="$(NOTES)"
 

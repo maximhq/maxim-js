@@ -1,6 +1,12 @@
 import { MaximTestRunAPI } from "../apis/testRun";
 import type { Data, DataStructure } from "../models/dataset";
-import type { CombinedLocalEvaluatorType, LocalEvaluationResult, LocalEvaluatorType, PassFailCriteriaType } from "../models/evaluator";
+import type {
+	CombinedLocalEvaluatorType,
+	LocalEvaluationResult,
+	LocalEvaluatorType,
+	PassFailCriteriaType,
+	Result,
+} from "../models/evaluator";
 import type { TestRunConfig, YieldedOutput } from "../models/testRun";
 
 export async function runOutputFunction<T extends DataStructure | undefined>(
@@ -28,40 +34,42 @@ export async function runOutputFunction<T extends DataStructure | undefined>(
 export async function runLocalEvaluations<T extends DataStructure | undefined>(
 	evaluators: (LocalEvaluatorType<T> | CombinedLocalEvaluatorType<T, Record<string, PassFailCriteriaType>>)[],
 	dataEntry: Data<T>,
-	output: YieldedOutput & { [key: string]: unknown },
+	output: YieldedOutput & Record<string, string>,
 	contextToEvaluate?: string | string[],
 ): Promise<LocalEvaluationResult[]> {
 	try {
 		const evaluatorResults = await Promise.all(
 			evaluators.map(async (evaluator): Promise<LocalEvaluationResult[]> => {
-				// Get the output for this evaluator (use variableMapping if provided)
-				let evaluationResultArgs: Record<string, any>;
+				// Build the result object with fixed properties
+				const evaluationResultArgs: Result = { output: output.data, contextToEvaluate };
 
+				// Build the variables object separately from variableMapping
+				const variables: Record<string, string> = {};
 				if (evaluator.variableMapping) {
-					evaluationResultArgs = {};
 					for (const [key, mappingFn] of Object.entries(evaluator.variableMapping)) {
 						try {
-							evaluationResultArgs[key] = mappingFn(output, dataEntry);
+							const mappedValue = mappingFn(output, dataEntry);
+							if (mappedValue !== undefined) {
+								variables[key] = mappedValue;
+							}
 						} catch (error) {
 							throw new Error(`Error in variable mapping for key "${key}": ${error instanceof Error ? error.message : String(error)}`);
 						}
 					}
-				} else {
-					evaluationResultArgs = {
-						output: output.data,
-						contextToEvaluate: contextToEvaluate,
-					};
 				}
 
-				// We need to capture the 'output' value specifically for LocalEvaluationResult.output
-				// If 'output' key exists in args, use it. Otherwise use output.data
-				const evaluatorOutput = evaluationResultArgs["output"] ?? output.data;
+				// Use output.data for the result output
+				const evaluatorOutput = output.data;
 
 				if ("names" in evaluator) {
 					try {
-						const results = await evaluator.evaluationFunction(evaluationResultArgs, {
-							...dataEntry,
-						});
+						const results = await evaluator.evaluationFunction(
+							evaluationResultArgs,
+							{
+								...dataEntry,
+							},
+							variables,
+						);
 						return Object.entries(results).map(([evaluatorName, result]) => {
 							const name = evaluator.names.find((name) => name === evaluatorName);
 							if (!name) {
@@ -111,9 +119,13 @@ export async function runLocalEvaluations<T extends DataStructure | undefined>(
 					}
 				} else {
 					try {
-						const result = await evaluator.evaluationFunction(evaluationResultArgs, {
-							...dataEntry,
-						});
+						const result = await evaluator.evaluationFunction(
+							evaluationResultArgs,
+							{
+								...dataEntry,
+							},
+							variables,
+						);
 						return [{ name: evaluator.name, passFailCriteria: evaluator.passFailCriteria, output: evaluatorOutput, result }];
 					} catch (err) {
 						return [

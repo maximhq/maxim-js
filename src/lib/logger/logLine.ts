@@ -258,6 +258,10 @@ export class LogLine implements IMaximLogger {
 	public generationEnd(generationId: string, data?: any): void {
 		Generation.end_(this._captureWriter, Entity.GENERATION, generationId, data);
 	}
+	
+	public generationSetName(generationId: string, name: string): void {
+		Generation.setName_(this._captureWriter, generationId, name);
+	}
 
 	public generationAddAttachment(generationId: string, attachment: Attachment): void {
 		Generation.addAttachment_(this._captureWriter, generationId, attachment);

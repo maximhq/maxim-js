@@ -1,7 +1,8 @@
 import { v4 as uuid } from "uuid";
 import { ILogWriter } from "../types";
-import { makeObjectSerializable, uniqueId } from "../utils";
+import { serializeMetadataValue, uniqueId } from "../utils";
 import { CommitLog, Entity } from "./types";
+
 
 /**
  * Configuration object for base container initialization.
@@ -135,7 +136,7 @@ export abstract class BaseContainer {
 	public addMetadata(metadata: Record<string, unknown>) {
 		const sanitizedMetadata = Object.entries(metadata).reduce(
 			(acc, [key, value]) => {
-				acc[key] = JSON.stringify(makeObjectSerializable(value));
+				acc[key] = serializeMetadataValue(value);
 				return acc;
 			},
 			{} as Record<string, string>,
@@ -155,7 +156,7 @@ export abstract class BaseContainer {
 	public static addMetadata_(writer: ILogWriter, entity: Entity, id: string, metadata: Record<string, unknown>) {
 		const sanitizedMetadata = Object.entries(metadata).reduce(
 			(acc, [key, value]) => {
-				acc[key] = JSON.stringify(makeObjectSerializable(value));
+				acc[key] = serializeMetadataValue(value);
 				return acc;
 			},
 			{} as Record<string, string>,
@@ -308,7 +309,7 @@ export abstract class EventEmittingBaseContainer extends EvaluatableBaseContaine
 		if (metadata) {
 			const sanitizedMetadata = Object.entries(metadata).reduce(
 				(acc, [key, value]) => {
-					acc[key] = JSON.stringify(makeObjectSerializable(value));
+					acc[key] = serializeMetadataValue(value);
 					return acc;
 				},
 				{} as Record<string, string>,
@@ -343,7 +344,7 @@ export abstract class EventEmittingBaseContainer extends EvaluatableBaseContaine
 		if (metadata) {
 			const sanitizedMetadata = Object.entries(metadata).reduce(
 				(acc, [key, value]) => {
-					acc[key] = JSON.stringify(makeObjectSerializable(value));
+					acc[key] = serializeMetadataValue(value);
 					return acc;
 				},
 				{} as Record<string, string>,

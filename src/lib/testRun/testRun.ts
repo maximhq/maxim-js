@@ -265,7 +265,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 						typeof e !== "string" && !("evaluationFunction" in e) && "variableMapping" in e && typeof e.variableMapping === "object",
 				);
 
-				let evaluatorOutputOverrides: Record<string, Record<string, any>> | undefined;
+				let evaluatorOutputOverrides: Record<string, Record<string, string | undefined>> | undefined;
 				evaluatorOutputOverrides = {};
 				for (const platformEval of platformEvaluatorsWithMangler) {
 					if (!platformEval.variableMapping) continue;
@@ -274,11 +274,11 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 						const evalConfig = platformEvaluatorsConfig.find((c) => c.name === platformEval.name);
 						if (!evalConfig) continue;
 
-						const mappingResult: Record<string, any> = {};
+						const mappingResult: Record<string, string | undefined> = {};
 						const persona = config.simulationConfig?.persona
 							? typeof config.simulationConfig.persona === "string"
 								? config.simulationConfig.persona
-								: row.data[config.simulationConfig.persona.payload]
+								: (row.data[config.simulationConfig.persona.payload] ?? "")
 							: "";
 
 						const runObj = {
@@ -299,17 +299,17 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 								const version = workflow
 									? {
 											id: workflow.id,
-											type: "workflow",
+											type: "workflow" as const,
 										}
 									: promptVersion
 										? {
 												id: promptVersion.id,
-												type: "prompt",
+												type: "prompt" as const,
 											}
 										: promptChainVersion
 											? {
 													id: promptChainVersion.id,
-													type: "promptChain",
+													type: "promptChain" as const,
 												}
 											: undefined;
 

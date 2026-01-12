@@ -81,3 +81,17 @@ export function makeObjectSerializable(obj: unknown): unknown {
 
 	return result;
 }
+
+export function serializeMetadataValue(value: unknown): string {
+	const serialized = makeObjectSerializable(value);
+	if (typeof serialized === "string") {
+		return serialized;
+	}
+	if (typeof serialized === "number" || typeof serialized === "boolean") {
+		return String(serialized);
+	}
+	if (serialized === null || serialized === undefined) {
+		return "";
+	}
+	return JSON.stringify(serialized);
+}
