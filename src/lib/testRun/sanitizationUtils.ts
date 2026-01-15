@@ -1,5 +1,5 @@
 import type { DataStructure } from "../models/dataset";
-import type { CombinedLocalEvaluatorType, LocalEvaluatorType, PassFailCriteriaType } from "../models/evaluator";
+import type { CombinedLocalEvaluatorType, LocalEvaluatorType, PassFailCriteriaType, PlatformEvaluator } from "../models/evaluator";
 import type { TestRunConfig } from "../models/testRun";
 import { CSVFile } from "../utils/csvParser";
 
@@ -69,7 +69,7 @@ export function sanitizeData<U extends DataStructure | undefined>(dataToSanitize
 }
 
 export function sanitizeEvaluators<T extends DataStructure | undefined>(
-	evaluators: (LocalEvaluatorType<T> | CombinedLocalEvaluatorType<T, Record<string, PassFailCriteriaType>> | string)[],
+	evaluators: (LocalEvaluatorType<T> | CombinedLocalEvaluatorType<T, Record<string, PassFailCriteriaType>> | string | PlatformEvaluator)[],
 ): void {
 	const namesEncountered = new Set<string>();
 	for (const evaluator of evaluators) {

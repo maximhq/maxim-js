@@ -5,6 +5,7 @@ import type {
 	LocalEvaluationResult,
 	LocalEvaluatorType,
 	PassFailCriteriaType,
+	PlatformEvaluator,
 } from "./evaluator";
 
 /**
@@ -137,13 +138,18 @@ export interface TestRunLogger<T extends DataStructure | undefined = undefined> 
  *       meta: {
  *         usage: response.usage,
  *         cost: response.cost
- *       }
  *     };
  *   });
+ *
+ * @property data The main string output of the run.
+ * @property retrievedContextToEvaluate Optional context retrieved during the run.
+ * @property messages Optional traces of the run (e.g. chat history).
+ * @property meta Optional metadata about the run (usage, cost, etc.).
  */
 export type YieldedOutput = {
 	data: string;
 	retrievedContextToEvaluate?: string | string[];
+	messages?: unknown[];
 	meta?: {
 		usage?:
 			| {
@@ -272,7 +278,7 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 	testConfigId?: string;
 	dataStructure?: T;
 	data?: DataValue<T>;
-	evaluators: (LocalEvaluatorType<T> | CombinedLocalEvaluatorType<T, Record<string, PassFailCriteriaType>> | string)[];
+	evaluators: (LocalEvaluatorType<T> | CombinedLocalEvaluatorType<T, Record<string, PassFailCriteriaType>> | string | PlatformEvaluator)[];
 	humanEvaluationConfig?: HumanEvaluationConfig;
 	outputFunction?: (data: Data<T>) => YieldedOutput | Promise<YieldedOutput>;
 	promptVersion?: {
@@ -579,7 +585,7 @@ export type TestRunBuilder<T extends DataStructure | undefined = undefined> = {
 	 *     .withConcurrency(10); // defaults to 10
 	 */
 	withConcurrency: (concurrency: TestRunConfig<T>["concurrency"]) => TestRunBuilder<T>;
-	
+
 	/**
 	 * @returns The TestRunBuilder with the tags set.
 	 * @example
@@ -700,6 +706,10 @@ export type MaximAPITestRunEntry = {
 	scenario?: string;
 	expectedSteps?: string;
 	output?: string;
+	meta?: {
+		variables?: Record<string, Variable>;
+		sdkVariables?: Record<string, Variable>;
+	};
 	dataEntry: Record<string, string | string[] | Variable | null | undefined>;
 	localEvaluationResults?: (LocalEvaluationResult & { id: string })[];
 };
@@ -744,6 +754,7 @@ export type MaximAPITestRunEntryExecuteWorkflowForDataResponse =
 	| {
 			data: {
 				output?: string;
+				messages?: unknown[];
 				contextToEvaluate?: string;
 				latency: number;
 			};
@@ -765,6 +776,7 @@ export type MaximAPITestRunEntryExecutePromptForDataResponse =
 	| {
 			data: {
 				output?: string;
+				messages?: unknown[];
 				contextToEvaluate?: string;
 				usage?: {
 					promptTokens: number;
@@ -796,6 +808,7 @@ export type MaximAPITestRunEntryExecutePromptChainForDataResponse =
 	| {
 			data: {
 				output?: string;
+				messages?: unknown[];
 				contextToEvaluate?: string;
 				usage?: {
 					promptTokens: number;

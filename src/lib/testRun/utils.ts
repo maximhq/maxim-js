@@ -1,5 +1,5 @@
 import type { DataStructure } from "../models/dataset";
-import type { CombinedLocalEvaluatorType, LocalEvaluatorType, PassFailCriteriaType } from "../models/evaluator";
+import type { CombinedLocalEvaluatorType, LocalEvaluatorType, PassFailCriteriaType, PlatformEvaluator } from "../models/evaluator";
 import { generateCuid } from "../utils/utils";
 
 export function buildErrorMessage(error: unknown, isCause?: boolean): string {
@@ -70,7 +70,7 @@ export function calculatePollingInterval(timeoutMinutes: number, isAIEvaluatorIn
 }
 
 export function getLocalEvaluatorNameToIdAndPassFailCriteriaMap<T extends DataStructure | undefined>(
-	evaluators: (LocalEvaluatorType<T> | CombinedLocalEvaluatorType<T, Record<string, PassFailCriteriaType>> | string)[],
+	evaluators: (LocalEvaluatorType<T> | CombinedLocalEvaluatorType<T, Record<string, PassFailCriteriaType>> | string | PlatformEvaluator)[],
 ) {
 	const allEvalNames = new Set(
 		evaluators
@@ -79,7 +79,7 @@ export function getLocalEvaluatorNameToIdAndPassFailCriteriaMap<T extends DataSt
 			.flat(),
 	);
 	const allPassFailCriteria = evaluators
-		.filter((e) => typeof e !== "string")
+		.filter((e) => typeof e !== "string" && "passFailCriteria" in e)
 		.reduce(
 			(acc, evaluator) => {
 				if ("names" in evaluator) {

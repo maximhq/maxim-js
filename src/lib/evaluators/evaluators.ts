@@ -23,7 +23,7 @@ import type { CombinedLocalEvaluatorType, LocalEvaluatorType, PassFailCriteriaTy
  *
  * const lengthEvaluator = createCustomEvaluator<typeof dataStructure>(
  *   "response-length",
- *   (result, data) => {
+ *   (result, data, variables) => {
  *     const wordCount = result.output.split(' ').length;
  *     return {
  *       score: wordCount,
@@ -47,7 +47,7 @@ import type { CombinedLocalEvaluatorType, LocalEvaluatorType, PassFailCriteriaTy
  * // Boolean evaluator example
  * const containsKeywordEvaluator = createCustomEvaluator<typeof dataStructure>(
  *   "keyword-checker",
- *   (result, data) => ({
+ *   (result, data, variables) => ({
  *     score: result.output.toLowerCase().includes("important"),
  *     reasoning: result.output.includes("important") ? "Contains keyword" : "Missing keyword"
  *   }),
@@ -101,7 +101,7 @@ export function createCustomEvaluator<T extends DataStructure | undefined = unde
  *
  * const qualityEvaluator = createCustomCombinedEvaluatorsFor("accuracy", "relevance", "fluency")
  *   .build<typeof dataStructure>(
- *     (result, data) => {
+ *     (result, data, variables) => {
  *       // Single function returns multiple scores
  *       const analysis = analyzeText(result.output);
  *       return {
