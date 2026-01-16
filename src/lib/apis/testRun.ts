@@ -8,11 +8,18 @@ import {
 	MaximAPITestRunEntryExecutePromptChainForDataResponse,
 	MaximAPITestRunEntryExecutePromptForDataPayload,
 	MaximAPITestRunEntryExecutePromptForDataResponse,
+	MaximAPITestRunEntryExecuteSimulationPromptPayload,
+	MaximAPITestRunEntryExecuteSimulationPromptPostResponse,
+	MaximAPITestRunEntryExecuteSimulationPromptGetResponse,
+	MaximAPITestRunEntryExecuteSimulationWorkflowPayload,
+	MaximAPITestRunEntryExecuteSimulationWorkflowPostResponse,
+	MaximAPITestRunEntryExecuteSimulationWorkflowGetResponse,
 	MaximAPITestRunEntryExecuteWorkflowForDataPayload,
 	MaximAPITestRunEntryExecuteWorkflowForDataResponse,
 	MaximAPITestRunEntryPushPayload,
 	MaximAPITestRunResultResponse,
 	MaximAPITestRunStatusResponse,
+	TestRunConfig,
 	TestRunResult,
 } from "../models/testRun";
 import type { UrlAttachment } from "../types";
@@ -35,20 +42,7 @@ export class MaximTestRunAPI extends MaximAPI {
 		promptChainVersionId?: string,
 		humanEvaluationConfig?: HumanEvaluationConfig,
 		tags?: string[],
-		simulationConfig?: {
-			scenario?: string;
-			persona?: string | { type: "DATASET_COLUMN"; payload: string };
-			maxTurns?: number;
-			tools?: string[];
-			context?: {
-				docs?: {
-					type: "DATASOURCE";
-					dataSourceIds: string[];
-				};
-			};
-			responseFields?: string[];
-			environmentId?: string;
-		},
+		simulationConfig?: TestRunConfig["simulationConfig"],
 	): Promise<ExtractAPIDataType<MaximAPICreateTestRunResponse>> {
 		return new Promise((resolve, reject) => {
 			this.fetch<MaximAPICreateTestRunResponse>(`/api/sdk/v2/test-run/create`, {
@@ -188,17 +182,28 @@ export class MaximTestRunAPI extends MaximAPI {
 		return result;
 	}
 
-	public async pushTestRunEntry({ testRun, runConfig, entry }: MaximAPITestRunEntryPushPayload): Promise<void> {
-		// Check if dataEntry is already in Variable format, otherwise convert
-		const rawDataEntry = entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>;
-		const dataEntry = Object.values(rawDataEntry).some((value) => value !== null && value !== undefined && !this.isVariable(value));
-		const convertedDataEntry = dataEntry
+	/**
+	 * Normalizes raw dataEntry to Variable format. If any value is a plain string/array,
+	 * converts via convertDataEntryToVariables; otherwise returns the entry as-is (already Variable).
+	 */
+	private normalizeDataEntryToVariables(
+		rawDataEntry: Record<string, string | string[] | Variable | null | undefined>,
+	): Record<string, Variable | undefined> {
+		const needsConversion = Object.values(rawDataEntry).some(
+			(value) => value !== null && value !== undefined && !this.isVariable(value),
+		);
+		return needsConversion
 			? this.convertDataEntryToVariables(rawDataEntry as Record<string, string | string[] | null | undefined>)
 			: (rawDataEntry as Record<string, Variable | undefined>);
-		const convertedEntry = {
-			...entry,
-			dataEntry: convertedDataEntry,
-		};
+	}
+
+	public async pushTestRunEntry({ testRun, runConfig, entry }: MaximAPITestRunEntryPushPayload): Promise<void> {
+		const convertedEntry = entry.dataEntry
+			? {
+					...entry,
+					dataEntry: this.normalizeDataEntryToVariables(entry.dataEntry),
+				}
+			: entry;
 
 		return new Promise((resolve, reject) => {
 			this.fetch<MaximAPIResponse>(`/api/sdk/v2/test-run/push`, {
@@ -329,6 +334,7 @@ export class MaximTestRunAPI extends MaximAPI {
 		input,
 		dataEntry,
 		contextToEvaluate,
+		simulationConfig,
 	}: MaximAPITestRunEntryExecutePromptForDataPayload): Promise<ExtractAPIDataType<MaximAPITestRunEntryExecutePromptForDataResponse>> {
 		return new Promise((resolve, reject) => {
 			this.fetch<MaximAPITestRunEntryExecutePromptForDataResponse>(`/api/sdk/v1/test-run/execute/prompt`, {
@@ -342,6 +348,7 @@ export class MaximTestRunAPI extends MaximAPI {
 					input,
 					dataEntry,
 					contextToEvaluate,
+					simulationConfig
 				}),
 			})
 				.then((response) => {
@@ -379,6 +386,164 @@ export class MaximTestRunAPI extends MaximAPI {
 					contextToEvaluate,
 				}),
 			})
+				.then((response) => {
+					if ("error" in response) {
+						reject(response.error);
+					} else {
+						resolve(response.data);
+					}
+				})
+				.catch((error) => {
+					reject(error);
+				});
+		});
+	}
+
+	public async executeSimulationPromptForData({
+		testRunId,
+		promptVersionId,
+		workspaceId,
+		datasetEntryId,
+		entry,
+		simulationConfig,
+	}: MaximAPITestRunEntryExecuteSimulationPromptPayload): Promise<
+		ExtractAPIDataType<MaximAPITestRunEntryExecuteSimulationPromptPostResponse>
+	> {
+		const convertedEntry =
+			entry?.dataEntry != null
+				? {
+						...entry,
+						dataEntry: this.normalizeDataEntryToVariables(
+							entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>,
+						),
+					}
+				: entry;
+
+		return new Promise((resolve, reject) => {
+			this.fetch<MaximAPITestRunEntryExecuteSimulationPromptPostResponse>(`/api/sdk/v2/test-run/execute/simulation/prompt`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json",
+				},
+				body: JSON.stringify({
+					testRunId,
+					promptVersionId,
+					workspaceId,
+					datasetEntryId,
+					entry: convertedEntry,
+					simulationConfig,
+				}),
+			})
+				.then((response) => {
+					if ("error" in response) {
+						reject(response.error);
+					} else {
+						resolve(response.data);
+					}
+				})
+				.catch((error) => {
+					reject(error);
+				});
+		});
+	}
+
+	public async getSimulationPromptStatus({
+		workspaceId,
+		testRunEntryId,
+	}: {
+		workspaceId: string;
+		testRunEntryId: string;
+	}): Promise<ExtractAPIDataType<MaximAPITestRunEntryExecuteSimulationPromptGetResponse>> {
+		return new Promise((resolve, reject) => {
+			this.fetch<MaximAPITestRunEntryExecuteSimulationPromptGetResponse>(
+				`/api/sdk/v2/test-run/execute/simulation/prompt?workspaceId=${workspaceId}&testRunEntryId=${testRunEntryId}`,
+				{
+					method: "GET",
+					headers: {
+						Accept: "application/json",
+					},
+				},
+			)
+				.then((response) => {
+					if ("error" in response) {
+						reject(response.error);
+					} else {
+						resolve(response.data);
+					}
+				})
+				.catch((error) => {
+					reject(error);
+				});
+		});
+	}
+	
+	public async executeSimulationWorkflowForData({
+		testRunId,
+		workflowId,
+		workspaceId,
+		datasetEntryId,
+		entry,
+		simulationConfig,
+	}: MaximAPITestRunEntryExecuteSimulationWorkflowPayload): Promise<
+		ExtractAPIDataType<MaximAPITestRunEntryExecuteSimulationWorkflowPostResponse>
+	> {
+		const convertedEntry =
+			entry?.dataEntry != null
+				? {
+						...entry,
+						dataEntry: this.normalizeDataEntryToVariables(
+							entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>,
+						),
+					}
+				: entry;
+
+		return new Promise((resolve, reject) => {
+			this.fetch<MaximAPITestRunEntryExecuteSimulationWorkflowPostResponse>(`/api/sdk/v2/test-run/execute/simulation/workflow`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json",
+				},
+				body: JSON.stringify({
+					testRunId,
+					workflowId,
+					workspaceId,
+					datasetEntryId,
+					entry: convertedEntry,
+					simulationConfig,
+				}),
+			})
+				.then((response) => {
+					if ("error" in response) {
+						reject(response.error);
+					} else {
+						resolve(response.data);
+					}
+				})
+				.catch((error) => {
+					reject(error);
+				});
+		});
+	}
+
+	public async getSimulationWorkflowStatus({
+		workspaceId,
+		testRunEntryId,
+	}: {
+		workspaceId: string;
+		testRunEntryId: string;
+	}): Promise<ExtractAPIDataType<MaximAPITestRunEntryExecuteSimulationWorkflowGetResponse>> {
+		return new Promise((resolve, reject) => {
+			this.fetch<MaximAPITestRunEntryExecuteSimulationWorkflowGetResponse>(
+				`/api/sdk/v2/test-run/execute/simulation/workflow?workspaceId=${workspaceId}&testRunEntryId=${testRunEntryId}`,
+				{
+					method: "GET",
+					headers: {
+						Accept: "application/json",
+					},
+				},
+			)
 				.then((response) => {
 					if ("error" in response) {
 						reject(response.error);
