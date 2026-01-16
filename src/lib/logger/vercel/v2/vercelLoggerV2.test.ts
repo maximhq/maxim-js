@@ -4,8 +4,8 @@ import { generateObject, generateText, streamObject, streamText, stepCountIs, to
 import { config } from "dotenv";
 import { v4 as uuid } from "uuid";
 import { z } from "zod/v3";
-import { Maxim } from "../../../../index";
-import { MaximVercelProviderMetadata, wrapMaximAISDKModel } from "../../../../vercel-ai-sdk";
+import { Maxim } from "../../../../../index";
+import { MaximVercelProviderMetadata, wrapMaximAISDKModel } from "../../../../../vercel-ai-sdk";
 
 config();
 
@@ -42,7 +42,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			// Use a model that supports V2 specification
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 			const trace = logger.trace({
@@ -56,7 +56,7 @@ describe("AI SDK V2 Specification Tests", () => {
 
 			const query = "What is the capital of France?";
 			trace.input(query);
-			
+
 			try {
 				const response = await generateText({
 					model: model,
@@ -97,7 +97,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -125,7 +125,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				const text = await result.text;
 				console.log("OpenAI V2 streaming response", text);
 				expect(text).toBeDefined();
@@ -144,7 +144,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -168,7 +168,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				console.log("OpenAI V2 object generation result", result.object);
 				expect(result.object).toBeDefined();
 				expect(result.object.city).toBeDefined();
@@ -187,7 +187,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -212,7 +212,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				const object = await result.object;
 				console.log("OpenAI V2 streaming object result", object);
 				expect(object).toBeDefined();
@@ -231,7 +231,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -276,7 +276,7 @@ describe("AI SDK V2 Specification Tests", () => {
 					},
 					stopWhen: stepCountIs(5),
 				});
-				
+
 				console.log("OpenAI V2 tool call result", result.text);
 				console.log("Tool calls executed:", result.toolCalls?.length || 0);
 				expect(result.text).toBeDefined();
@@ -296,7 +296,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -358,7 +358,7 @@ describe("AI SDK V2 Specification Tests", () => {
 					},
 					stopWhen: stepCountIs(5),
 				});
-				
+
 				console.log("OpenAI V2 multiple tool calls result", result.text);
 				console.log("Tool calls executed:", result.toolCalls?.length || 0);
 				expect(result.text).toBeDefined();
@@ -378,7 +378,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -423,7 +423,7 @@ describe("AI SDK V2 Specification Tests", () => {
 					},
 					stopWhen: stepCountIs(5),
 				});
-				
+
 				const text = await result.text;
 				const toolCalls = await result.toolCalls;
 				console.log("OpenAI V2 streaming tool call result", text);
@@ -445,7 +445,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -507,7 +507,7 @@ describe("AI SDK V2 Specification Tests", () => {
 					},
 					stopWhen: stepCountIs(10),
 				});
-				
+
 				console.log("OpenAI V2 complex tool execution result", result.text);
 				console.log("Tool calls executed:", result.toolCalls?.length || 0);
 				if (result.toolCalls && result.toolCalls.length > 0) {
@@ -531,7 +531,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 			const sessionId = uuid();
 
@@ -583,7 +583,7 @@ describe("AI SDK V2 Specification Tests", () => {
 					},
 					stopWhen: stepCountIs(5),
 				});
-				
+
 				console.log("OpenAI V2 session tool call result", result.text);
 				console.log("Tool calls executed:", result.toolCalls?.length || 0);
 				expect(result.text).toBeDefined();
@@ -604,7 +604,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -644,7 +644,7 @@ describe("AI SDK V2 Specification Tests", () => {
 
 				console.log("V2 Session - First response:", result1.text);
 				console.log("V2 Session - Second response:", result2.text);
-				
+
 				expect(result1.text).toBeDefined();
 				expect(result2.text).toBeDefined();
 			} catch (error) {
@@ -661,7 +661,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -696,7 +696,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				console.log("OpenAI V2 image analysis result", result.text);
 				expect(result.text).toBeDefined();
 				expect(result.text.length).toBeGreaterThan(0);
@@ -716,7 +716,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(anthropic("claude-3-5-sonnet-20241022"), logger);
 
 			try {
@@ -737,7 +737,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				console.log("Anthropic V2 response", response.text);
 				expect(response.text).toBeDefined();
 				expect(response.text.length).toBeGreaterThan(0);
@@ -755,7 +755,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(anthropic("claude-3-5-sonnet-20241022"), logger);
 
 			try {
@@ -776,7 +776,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				const text = await result.text;
 				console.log("Anthropic V2 streaming result", text);
 				expect(text).toBeDefined();
@@ -797,7 +797,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -817,7 +817,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				// If we reach here, the test should fail
 				fail("Expected an error to be thrown");
 			} catch (error) {
@@ -836,7 +836,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -856,14 +856,17 @@ describe("AI SDK V2 Specification Tests", () => {
 								},
 							} as MaximVercelProviderMetadata,
 						},
-					})
+					}),
 				);
 
 				const results = await Promise.all(promises);
-				
-				console.log("V2 Concurrent call results:", results.map(r => r.text));
+
+				console.log(
+					"V2 Concurrent call results:",
+					results.map((r) => r.text),
+				);
 				expect(results).toHaveLength(3);
-				results.forEach(result => {
+				results.forEach((result) => {
 					expect(result.text).toBeDefined();
 					expect(result.text.length).toBeGreaterThan(0);
 				});
@@ -881,7 +884,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 			const customTraceId = uuid();
 			const customSpanId = uuid();
@@ -905,7 +908,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				console.log("V2 Custom IDs result", result.text);
 				expect(result.text).toBeDefined();
 				expect(result.text.length).toBeGreaterThan(0);
@@ -925,7 +928,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -961,7 +964,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				console.log("V2 file content analysis result", result.text);
 				expect(result.text).toBeDefined();
 				expect(result.text.length).toBeGreaterThan(0);
@@ -979,7 +982,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			try {
@@ -995,26 +998,27 @@ describe("AI SDK V2 Specification Tests", () => {
 							execute: async ({ data, analysisType }) => {
 								switch (analysisType) {
 									case "mean":
-										return { 
+										return {
 											result: data.reduce((a, b) => a + b, 0) / data.length,
 											type: "mean",
-											dataPoints: data.length 
+											dataPoints: data.length,
 										};
-									case "median":
+									case "median": {
 										const sorted = [...data].sort((a, b) => a - b);
 										const mid = Math.floor(sorted.length / 2);
-										return { 
+										return {
 											result: sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid],
 											type: "median",
-											dataPoints: data.length 
+											dataPoints: data.length,
 										};
+									}
 									case "range":
-										return { 
+										return {
 											result: Math.max(...data) - Math.min(...data),
 											type: "range",
 											min: Math.min(...data),
 											max: Math.max(...data),
-											dataPoints: data.length 
+											dataPoints: data.length,
 										};
 									default:
 										return { result: "Analysis type not supported", type: "error" };
@@ -1035,7 +1039,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				console.log("V2 advanced tool result", result.text);
 				expect(result.text).toBeDefined();
 				expect(result.text.length).toBeGreaterThan(0);
@@ -1053,7 +1057,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 			const conversationTraceId = uuid();
 
@@ -1158,7 +1162,7 @@ describe("AI SDK V2 Specification Tests", () => {
 				console.log("Turn 1:", turn1.text);
 				console.log("Turn 2:", turn2.text);
 				console.log("Turn 3:", turn3.text);
-				
+
 				expect(turn1.text).toBeDefined();
 				expect(turn2.text).toBeDefined();
 				expect(turn3.text).toBeDefined();
@@ -1176,7 +1180,7 @@ describe("AI SDK V2 Specification Tests", () => {
 			if (!logger) {
 				throw new Error("Logger is not available");
 			}
-			
+
 			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
 
 			// Verify that the wrapped model maintains V2 specification
@@ -1200,7 +1204,7 @@ describe("AI SDK V2 Specification Tests", () => {
 						} as MaximVercelProviderMetadata,
 					},
 				});
-				
+
 				console.log("V2 specification validation result", result.text);
 				expect(result.text).toBeDefined();
 			} catch (error) {

@@ -4,8 +4,8 @@ import { generateObject, generateText, streamObject, streamText, tool } from "ai
 import { config } from "dotenv";
 import { v4 as uuid } from "uuid";
 import { z } from "zod/v3";
-import { Maxim } from "../../../../index";
-import { MaximVercelProviderMetadata, wrapMaximAISDKModel } from "../../../../vercel-ai-sdk";
+import { Maxim } from "../../../../../index";
+import { MaximVercelProviderMetadata, wrapMaximAISDKModel } from "../../../../../vercel-ai-sdk";
 
 config();
 

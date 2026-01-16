@@ -525,6 +525,7 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ### v6.27.0
 
+- feat: Adds support for AI SDK v6
 - feat: Adds support for `variableMapping` field for test runs.
 
 ### v6.26.0
