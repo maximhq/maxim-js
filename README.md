@@ -89,7 +89,8 @@ That's it! No need to modify your existing chains, agents, or LLM calls.
 #### Complete Setup Example
 
 ```js
-import { MaximLangchainTracer } from "@maximai/maxim-js";
+import { Maxim } from "@maximai/maxim-js";
+import { MaximLangchainTracer } from "@maximai/maxim-js/langchain";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 
@@ -523,8 +524,13 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.28.0
+
+- fix: Check for log repository does not block logger creation.
+
 ### v6.27.0
 
+- feat: Adds support for AI SDK v6
 - feat: Adds support for `variableMapping` field for test runs.
 
 ### v6.26.0

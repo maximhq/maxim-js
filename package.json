@@ -1,7 +1,7 @@
 {
 	"name": "@maximai/maxim-js",
 	"description": "Maxim AI JS SDK. Visit https://getmaxim.ai for more info.",
-	"version": "6.27.0",
+	"version": "6.28.0",
 	"scripts": {
 		"build": "npx tsc -p tsconfig.lib.json && npm run copy-assets && npm run clean-package",
 		"copy-assets": "copyfiles \"README.md\" \"LICENSE\" dist",
@@ -20,9 +20,9 @@
 		"docs:build": "npm run docs:clean && npm run docs:generate && npm run docs:rename && npm run docs:fix-links && npm run docs:post-process && npm run docs:mintlify"
 	},
 	"devDependencies": {
-		"@ai-sdk/anthropic": "^2.0.9",
-		"@ai-sdk/google": "^2.0.23",
-		"@ai-sdk/openai": "^2.0.65",
+		"@ai-sdk/anthropic": "^3.0.13",
+		"@ai-sdk/google": "^3.0.8",
+		"@ai-sdk/openai": "^3.0.10",
 		"@langchain/anthropic": "^0.3.21",
 		"@langchain/community": "^0.3.46",
 		"@langchain/core": "^0.3.0",
@@ -33,9 +33,10 @@
 		"@types/node": "22.15.30",
 		"@typescript-eslint/eslint-plugin": "8.33.1",
 		"@typescript-eslint/parser": "8.33.1",
-		"ai": "^5.0.72",
+		"ai": "^6.0.34",
 		"ai-sdk-provider-v1": "npm:@ai-sdk/provider@^1.0.0",
 		"ai-sdk-provider-v2": "npm:@ai-sdk/provider@^2.0.0",
+		"ai-sdk-provider-v3": "npm:@ai-sdk/provider@^3.0.0",
 		"copyfiles": "2.4.1",
 		"dotenv": "^16.5.0",
 		"eslint": "9.28.0",
@@ -102,7 +103,13 @@
 			"react-native": "./openai-agents.js",
 			"types": "./openai-agents.d.ts",
 			"default": "./openai-agents.js"
+		},
+		"./openai-sdk": {
+			"react-native": "./openai-sdk.js",
+			"types": "./openai-sdk.d.ts",
+			"default": "./openai-sdk.js"
 		}
+
 	},
 	"dependencies": {
 		"axios": "^1.11.0",

@@ -1290,16 +1290,11 @@ export class Maxim {
 	public async logger(config: LoggerConfig): Promise<MaximLogger | undefined> {
 		try {
 			if (this.isPromptManagementEnabled) await this.sync;
-			// Checking if this log repository exist on server
-			const exists = await this.APIService.logs.doesLogRepositoryExist(config.id);
-			if (!exists) {
-				if (config.id) {
-					throw new Error(`Log repository not found.`);
-				}
-			}
+
 			if (this.loggers.has(config.id)) {
 				return this.loggers.get(config.id)!;
 			}
+
 			const logger = new MaximLogger({
 				config: config,
 				apiKey: this.apiKey,
@@ -1309,6 +1304,15 @@ export class Maxim {
 				raiseExceptions: this._raiseExceptions,
 			});
 			this.loggers.set(config.id, logger);
+
+			// check if log repo exists asynchronously without blocking the logger creation if _raiseExceptions is false
+			const repoCheck = this.checkIfRepoExists(config.id);
+			if (this._raiseExceptions) {
+				await repoCheck;
+			} else {
+				void repoCheck;
+			}
+
 			return logger;
 		} catch (err) {
 			if (this._raiseExceptions) {
@@ -1316,6 +1320,25 @@ export class Maxim {
 			} else {
 				console.error(`[Maxim-SDK] Error while creating logger: ${err instanceof Error ? err.message : err}`);
 				return undefined;
+			}
+		}
+	}
+
+	private async checkIfRepoExists(repoId: string): Promise<void> {
+		try {
+			const exists = await this.APIService.logs.doesLogRepositoryExist(repoId);
+			if (!exists) {
+				console.warn(`[Maxim-SDK] Log repository not found: ${repoId}.`);
+				if (this._raiseExceptions) {
+					throw new Error(`Log repository not found: ${repoId}`);
+				}
+			} else if (this.isDebug) {
+				console.log(`[Maxim-SDK] Log repository found: ${repoId}`);
+			}
+		} catch (e) {
+			console.error(`[Maxim-SDK] Log repository does not exist: ${repoId}`);
+			if (this._raiseExceptions) {
+				throw e;
 			}
 		}
 	}

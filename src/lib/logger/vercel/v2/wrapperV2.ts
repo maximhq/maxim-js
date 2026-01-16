@@ -1,56 +1,13 @@
-import type { LanguageModelV1, LanguageModelV1CallOptions, LanguageModelV1StreamPart } from "ai-sdk-provider-v1";
-import type { LanguageModelV2 } from "ai-sdk-provider-v2";
-import { MaximLogger } from "../logger";
+import type { LanguageModelV2, LanguageModelV2CallOptions, LanguageModelV2StreamPart } from "ai-sdk-provider-v2";
+import { MaximLogger } from "../../logger";
+import { determineProvider, extractMaximMetadataFromOptions, extractModelParameters } from "./../utils";
+import { Generation, Session, Trace } from "../../components";
 import { v4 as uuid } from "uuid";
-import {
-	convertDoGenerateResultToChatCompletionResult,
-	determineProvider,
-	extractMaximMetadataFromOptions,
-	extractModelParameters,
-	LanguageFirstTokenModel,
-	parsePromptMessages,
-	processStream,
-} from "./utils";
-import { Generation, Session, Trace } from "../components";
-import { MaximAISDKWrapperV2 } from "./wrapperV2";
-import { ChatCompletionMessage, CompletionRequest } from "src/lib/models/prompt";
+import { ChatCompletionMessage, CompletionRequest, CompletionRequestContent } from "src/lib/models/prompt";
+import { convertDoGenerateResultToChatCompletionResultV2, parsePromptMessagesV2, processStreamV2 } from "./utils";
+import { LanguageFirstTokenModel } from "../types";
 
-/**
- * Wraps a Vercel AI SDK language model with Maxim logging and tracing capabilities.
- *
- * This function checks if the provided model implements the v1 specification, and if so,
- * returns a wrapped version that integrates Maxim's observability features. If the model
- * is not supported, it logs an error and returns the original model.
- *
- * @template T - The type of the language model (must extend LanguageModelV1).
- * @param model - The Vercel AI SDK language model instance to wrap.
- * @param logger - The MaximLogger instance to use for tracing and logging.
- * @returns The wrapped model with Maxim integration, or the original model if unsupported.
- */
-export function wrapMaximAISDKModel<T extends LanguageModelV1 | LanguageModelV2>(model: T, logger: MaximLogger): T {
-	if (model?.specificationVersion === "v1") {
-		return new MaximAISDKWrapper(model, logger) as unknown as T;
-	}
-	if (model?.specificationVersion === "v2") {
-		return new MaximAISDKWrapperV2(model, logger) as unknown as T;
-	}
-	console.error("[MaximSDK] Unsupported model");
-	return model;
-}
-
-/**
- * A wrapper class that adds Maxim logging and tracing to a Vercel AI SDK language model.
- *
- * This class decorates a LanguageModelV1 instance, intercepting calls to provide
- * advanced observability, tracing, and logging via the MaximLogger. It is intended
- * for internal use by the wrapMaximAISDKModel function.
- *
- * @class
- * @template T - The type of the language model (must extend LanguageModelV1).
- * @param model - The Vercel AI SDK language model instance to wrap.
- * @param logger - The MaximLogger instance to use for tracing and logging.
- */
-class MaximAISDKWrapper implements LanguageModelV1 {
+export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 	// Internal state to track trace across multiple doGenerate calls in a tool-call sequence
 	private currentTraceId: string | null = null;
 	private currentTrace: Trace | null = null;
@@ -65,7 +22,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 * @param logger - The MaximLogger instance to use for tracing and logging.
 	 */
 	constructor(
-		private model: LanguageModelV1,
+		private model: LanguageModelV2,
 		private logger: MaximLogger,
 	) {}
 
@@ -80,9 +37,9 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 * @param promptMessages - The parsed prompt messages (used to detect tool calls).
 	 * @returns An object containing maximMetadata, trace, session, span, and promptMessages.
 	 */
-	private setupLogging(options: LanguageModelV1CallOptions, promptMessages: Array<CompletionRequest | ChatCompletionMessage>) {
+	private setupLogging(options: LanguageModelV2CallOptions, promptMessages: Array<CompletionRequest | ChatCompletionMessage>) {
 		// Extracting the maxim object from `providerOptions`
-		const maximMetadata = extractMaximMetadataFromOptions(options.providerMetadata);
+		const maximMetadata = extractMaximMetadataFromOptions(options.providerOptions);
 
 		// Check if this is a continuation of a tool-call sequence (has tool results in prompt)
 		const hasToolResults = promptMessages.some((msg) => msg.role === "tool");
@@ -143,6 +100,12 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 			this.isInToolCallSequence = false;
 		}
 
+		const span = trace.span({
+			id: maximMetadata?.spanId ?? uuid(),
+			name: maximMetadata?.spanName ?? "default-span",
+			tags: maximMetadata?.spanTags,
+		});
+
 		const userMessage = promptMessages.findLast((msg) => msg.role === "user");
 		if (userMessage && userMessage.content) {
 			const userInput = userMessage.content;
@@ -168,12 +131,6 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 			}
 		}
 
-		const span = trace.span({
-			id: maximMetadata?.spanId ?? uuid(),
-			name: maximMetadata?.spanName ?? "default-span",
-			tags: maximMetadata?.spanTags,
-		});
-
 		return { maximMetadata, trace, session, span, promptMessages };
 	}
 
@@ -186,12 +143,12 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 * @param options - The call options for the model invocation.
 	 * @returns The result of the underlying model's doGenerate call.
 	 */
-	async doGenerate(options: LanguageModelV1CallOptions) {
+	async doGenerate(options: LanguageModelV2CallOptions) {
 		// Parse prompt messages first to detect tool calls
-		const promptMessages = parsePromptMessages(options.prompt);
+		const promptMessages = parsePromptMessagesV2(options.prompt);
 		const { maximMetadata, trace, span } = this.setupLogging(options, promptMessages);
 		let generation: Generation | undefined = undefined;
-		let response: Awaited<ReturnType<LanguageModelV1["doGenerate"]>> | undefined = undefined;
+		let response: Awaited<ReturnType<LanguageModelV2["doGenerate"]>> | undefined = undefined;
 		let hasToolCallsInResponse = false;
 
 		try {
@@ -218,20 +175,33 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 			// Calling the original doGenerate function
 			response = await this.model.doGenerate(options);
 
-			// Check if response has tool calls - in v1, tool calls are in rawResponse.body.choices
-			const choices = (response.rawResponse as any)?.body?.choices ?? [];
-			if (Array.isArray(choices)) {
-				hasToolCallsInResponse = choices.some(
-					(choice: any) => choice.message?.tool_calls && Array.isArray(choice.message.tool_calls) && choice.message.tool_calls.length > 0,
-				);
-			}
+			// Check if response has tool calls - if so, we're in a tool-call sequence
+			hasToolCallsInResponse = response.content?.some((content) => content.type === "tool-call") ?? false;
 
 			if (hasToolCallsInResponse) {
 				// Mark that we're in a tool-call sequence
 				this.isInToolCallSequence = true;
 			}
 
-			const res = convertDoGenerateResultToChatCompletionResult(response);
+			// Create ToolCall entities for any tool calls in the response
+			if (response.content) {
+				for (const content of response.content) {
+					if (content.type === "tool-call") {
+						const toolCallId = content.toolCallId;
+						const toolName = content.toolName;
+						const toolInput = typeof content.input === "string" ? content.input : JSON.stringify(content.input);
+
+						span.toolCall({
+							id: toolCallId,
+							name: toolName,
+							description: toolName,
+							args: toolInput,
+						});
+					}
+				}
+			}
+
+			const res = convertDoGenerateResultToChatCompletionResultV2(response);
 			generation.result(res);
 			generation.end();
 
@@ -277,9 +247,9 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	 * @param options - The call options for the model invocation.
 	 * @returns The result of the underlying model's doStream call, with a wrapped stream.
 	 */
-	async doStream(options: LanguageModelV1CallOptions) {
+	async doStream(options: LanguageModelV2CallOptions) {
 		// Parse prompt messages first to detect tool calls
-		const promptMessages = parsePromptMessages(options.prompt);
+		const promptMessages = parsePromptMessagesV2(options.prompt);
 		const { maximMetadata, trace, span } = this.setupLogging(options, promptMessages);
 		let generation: Generation | undefined = undefined;
 		let hasToolCallsInResponse = false;
@@ -303,12 +273,13 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 			});
 
 			// going through the original stream to collect chunks and pass them without modifications to the stream
-			const chunks: LanguageModelV1StreamPart[] = [];
+			const chunks: LanguageModelV2StreamPart[] = [];
 			const firstToken: LanguageFirstTokenModel = {
 				received: false,
 				time: null,
 			};
-			const stream = new ReadableStream<LanguageModelV1StreamPart>({
+
+			const stream = new ReadableStream<LanguageModelV2StreamPart>({
 				async start(controller) {
 					try {
 						const reader = response.stream.getReader();
@@ -320,7 +291,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 								// Stream is done, now process before closing
 								try {
 									// Check if we have tool calls in the stream
-									hasToolCallsInResponse = chunks.some((chunk) => chunk.type === "tool-call" || chunk.type === "tool-call-delta");
+									hasToolCallsInResponse = chunks.some((chunk) => chunk.type === "tool-call");
 
 									if (hasToolCallsInResponse) {
 										// Mark that we're in a tool-call sequence
@@ -333,9 +304,9 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 										firstToken.time = null;
 									}
 									const endTime = performance.now();
-									const textChunks = chunks.filter((chunk) => chunk.type === "text-delta" || chunk.type === "tool-call-delta");
+									const textChunks = chunks.filter((chunk) => chunk.type === "text-delta" || chunk.type === "tool-input-delta");
 									trace.addMetric("tokens_per_second", textChunks.length / ((endTime - startTime) / 1000));
-									if (generation) processStream(chunks, span, trace, generation, modelId, maximMetadata);
+									if (generation) processStreamV2(chunks, span, trace, generation, modelId, maximMetadata);
 
 									if (promptMessages.length > 0) {
 										const toolCalls = promptMessages.filter((msg) => msg.role === "tool");
@@ -377,8 +348,7 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 								break;
 							}
 
-							// Only mark first token when we receive an actual text-delta or tool-call-delta chunk
-							if (!firstToken.received && (value.type === "text-delta" || value.type === "tool-call-delta")) {
+							if (!firstToken.received && (value.type === "text-delta" || value.type === "tool-input-delta")) {
 								firstToken.received = true;
 								firstToken.time = performance.now();
 							}
@@ -417,19 +387,21 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 
 			throw error;
 		} finally {
-			// Note: For streaming, span ending happens in processStream, and trace ending
-			// is handled in the stream completion handler above (because hasToolCallsInResponse
-			// is set asynchronously). We don't end the trace here.
-		}
-	}
+			// End trace if:
+			// 1. User explicitly provided traceId (they manage it) - but don't reset state
+			// 2. OR response has no tool calls (sequence is complete or single call)
+			const shouldEndTrace = maximMetadata?.traceId || !hasToolCallsInResponse;
 
-	/**
-	 * Returns the default object generation mode of the wrapped model.
-	 *
-	 * @returns The default object generation mode.
-	 */
-	get defaultObjectGenerationMode() {
-		return this.model.defaultObjectGenerationMode;
+			if (shouldEndTrace) {
+				// Reset state when ending trace (only if user didn't provide traceId)
+				if (!maximMetadata?.traceId) {
+					this.currentTraceId = null;
+					this.currentTrace = null;
+					this.isInToolCallSequence = false;
+					trace.end();
+				}
+			}
+		}
 	}
 
 	/**
@@ -460,29 +432,11 @@ class MaximAISDKWrapper implements LanguageModelV1 {
 	}
 
 	/**
-	 * Indicates whether the wrapped model supports image URLs.
+	 * Supported URL patterns by media type for the provider.
 	 *
-	 * @returns True if image URLs are supported, false otherwise.
+	 * @returns A map of supported URL patterns by media type (as a promise or a plain object).
 	 */
-	get supportsImageUrls() {
-		return this.model.supportsImageUrls;
-	}
-
-	/**
-	 * Indicates whether the wrapped model supports structured outputs.
-	 *
-	 * @returns True if structured outputs are supported, false otherwise.
-	 */
-	get supportsStructuredOutputs() {
-		return this.model.supportsStructuredOutputs;
-	}
-
-	/**
-	 * Indicates whether the wrapped model supports URL input.
-	 *
-	 * @returns True if URL input is supported, false otherwise.
-	 */
-	get supportsUrl() {
-		return this.model.supportsUrl;
+	get supportedUrls() {
+		return this.model.supportedUrls;
 	}
 }

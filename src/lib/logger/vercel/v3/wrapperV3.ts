@@ -1,24 +1,21 @@
-import type { LanguageModelV2, LanguageModelV2CallOptions, LanguageModelV2StreamPart } from "ai-sdk-provider-v2";
-import { MaximLogger } from "../logger";
-import {
-	convertDoGenerateResultToChatCompletionResultV2,
-	determineProvider,
-	extractMaximMetadataFromOptions,
-	extractModelParameters,
-	LanguageFirstTokenModel,
-	parsePromptMessagesV2,
-	processStreamV2,
-} from "./utils";
-import { Generation, Session, Trace } from "../components";
+import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3StreamPart } from "ai-sdk-provider-v3";
+import { MaximLogger } from "../../logger";
+import { determineProvider, extractMaximMetadataFromOptions, extractModelParameters } from "./../utils";
+import { Generation, Session, Trace } from "../../components";
 import { v4 as uuid } from "uuid";
-import { ChatCompletionMessage, CompletionRequest, CompletionRequestContent } from "src/lib/models/prompt";
+import { ChatCompletionMessage, CompletionRequest } from "src/lib/models/prompt";
+import { convertDoGenerateResultToChatCompletionResultV3, parsePromptMessagesV3, processStreamV3 } from "./utils";
+import { LanguageFirstTokenModel } from "../types";
 
-export class MaximAISDKWrapperV2 implements LanguageModelV2 {
+export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 	// Internal state to track trace across multiple doGenerate calls in a tool-call sequence
 	private currentTraceId: string | null = null;
 	private currentTrace: Trace | null = null;
 	private currentSession: Session | null = null;
 	private isInToolCallSequence: boolean = false;
+	// Track attachments that have been added to prevent duplicates across multiple doGenerate calls
+	// We use a hash of the file data to identify duplicates, since attachment IDs are regenerated each time
+	private addedAttachmentHashes: Set<string> = new Set();
 
 	/**
 	 * @constructor
@@ -28,7 +25,7 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 	 * @param logger - The MaximLogger instance to use for tracing and logging.
 	 */
 	constructor(
-		private model: LanguageModelV2,
+		private model: LanguageModelV3,
 		private logger: MaximLogger,
 	) {}
 
@@ -43,7 +40,7 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 	 * @param promptMessages - The parsed prompt messages (used to detect tool calls).
 	 * @returns An object containing maximMetadata, trace, session, span, and promptMessages.
 	 */
-	private setupLogging(options: LanguageModelV2CallOptions, promptMessages: Array<CompletionRequest | ChatCompletionMessage>) {
+	private setupLogging(options: LanguageModelV3CallOptions, promptMessages: Array<CompletionRequest | ChatCompletionMessage>) {
 		// Extracting the maxim object from `providerOptions`
 		const maximMetadata = extractMaximMetadataFromOptions(options.providerOptions);
 
@@ -149,14 +146,14 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 	 * @param options - The call options for the model invocation.
 	 * @returns The result of the underlying model's doGenerate call.
 	 */
-	async doGenerate(options: LanguageModelV2CallOptions) {
-		// Parse prompt messages first to detect tool calls
-		const promptMessages = parsePromptMessagesV2(options.prompt);
+	async doGenerate(options: LanguageModelV3CallOptions) {
+		// Parse prompt messages first to detect tool calls and extract attachments
+		const { messages: promptMessages, attachments: fileAttachments } = parsePromptMessagesV3(options.prompt);
 		const { maximMetadata, trace, span } = this.setupLogging(options, promptMessages);
 		let generation: Generation | undefined = undefined;
-		let response: Awaited<ReturnType<LanguageModelV2["doGenerate"]>> | undefined = undefined;
+		let response: Awaited<ReturnType<LanguageModelV3["doGenerate"]>> | undefined = undefined;
 		let hasToolCallsInResponse = false;
-		
+
 		try {
 			generation = span.generation({
 				id: uuid(),
@@ -167,6 +164,32 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 				modelParameters: extractModelParameters(options),
 				tags: maximMetadata?.generationTags,
 			});
+
+			// Add file attachments to both generation and trace, avoiding duplicates
+			// We hash the file data to identify duplicates across multiple doGenerate calls
+			for (const attachment of fileAttachments) {
+				let identifier: string;
+				
+				if (attachment.type === "fileData") {
+					// Create a simple hash of the file data to detect duplicates
+					identifier = this.hashBuffer(attachment.data);
+				} else {
+					// For URL and file path attachments, use the URL/path as the identifier
+					identifier = attachment.type === "url" ? attachment.url : attachment.path;
+				}
+				
+				if (!this.addedAttachmentHashes.has(identifier)) {
+					generation.addAttachment({
+						...attachment,
+						id: uuid(),
+					});
+					trace.addAttachment({
+						...attachment,
+						id: uuid(),
+					});
+					this.addedAttachmentHashes.add(identifier);
+				}
+			}
 
 			if (promptMessages.length > 0) {
 				const toolCalls = promptMessages.filter((msg) => msg.role === "tool");
@@ -207,9 +230,8 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 				}
 			}
 
-			const res = convertDoGenerateResultToChatCompletionResultV2(response);
+			const res = convertDoGenerateResultToChatCompletionResultV3(response);
 			generation.result(res);
-			generation.end();
 
 			return response;
 		} catch (error) {
@@ -217,7 +239,6 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 				generation.error({
 					message: (error as Error).message,
 				});
-				generation.end();
 			}
 
 			// Log error details
@@ -227,20 +248,13 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 		} finally {
 			span.end();
 
-			// End trace if:
-			// 1. User explicitly provided traceId (they manage it) - but don't reset state
-			// 2. OR response has no tool calls (sequence is complete or single call)
-			const shouldEndTrace = maximMetadata?.traceId || !hasToolCallsInResponse;
-
-			if (shouldEndTrace) {
-				// Reset state when ending trace (only if user didn't provide traceId)
-				if (!maximMetadata?.traceId) {
-					this.currentTraceId = null;
-					this.currentTrace = null;
-					this.isInToolCallSequence = false;
-					trace.end();
-				}
+			if (!hasToolCallsInResponse) {
+				this.addedAttachmentHashes.clear();
 			}
+			this.currentTraceId = null;
+			this.currentTrace = null;
+			this.isInToolCallSequence = false;
+			trace.end();
 		}
 	}
 
@@ -253,9 +267,9 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 	 * @param options - The call options for the model invocation.
 	 * @returns The result of the underlying model's doStream call, with a wrapped stream.
 	 */
-	async doStream(options: LanguageModelV2CallOptions) {
-		// Parse prompt messages first to detect tool calls
-		const promptMessages = parsePromptMessagesV2(options.prompt);
+	async doStream(options: LanguageModelV3CallOptions) {
+		// Parse prompt messages first to detect tool calls and extract attachments
+		const { messages: promptMessages, attachments: fileAttachments } = parsePromptMessagesV3(options.prompt);
 		const { maximMetadata, trace, span } = this.setupLogging(options, promptMessages);
 		let generation: Generation | undefined = undefined;
 		let hasToolCallsInResponse = false;
@@ -278,14 +292,40 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 				messages: promptMessages,
 			});
 
+			// Add file attachments to both generation and trace, avoiding duplicates
+			// We hash the file data to identify duplicates across multiple doGenerate calls
+			for (const attachment of fileAttachments) {
+				let identifier: string;
+				
+				if (attachment.type === "fileData") {
+					// Create a simple hash of the file data to detect duplicates
+					identifier = wrapperInstance.hashBuffer(attachment.data);
+				} else {
+					// For URL and file path attachments, use the URL/path as the identifier
+					identifier = attachment.type === "url" ? attachment.url : attachment.path;
+				}
+				
+				if (!wrapperInstance.addedAttachmentHashes.has(identifier)) {
+					generation.addAttachment({
+						...attachment,
+						id: uuid(),
+					});
+					trace.addAttachment({
+						...attachment,
+						id: uuid(),
+					});
+					wrapperInstance.addedAttachmentHashes.add(identifier);
+				}
+			}
+
 			// going through the original stream to collect chunks and pass them without modifications to the stream
-			const chunks: LanguageModelV2StreamPart[] = [];
+			const chunks: LanguageModelV3StreamPart[] = [];
 			const firstToken: LanguageFirstTokenModel = {
 				received: false,
 				time: null,
 			};
 
-			const stream = new ReadableStream<LanguageModelV2StreamPart>({
+			const stream = new ReadableStream<LanguageModelV3StreamPart>({
 				async start(controller) {
 					try {
 						const reader = response.stream.getReader();
@@ -312,7 +352,7 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 									const endTime = performance.now();
 									const textChunks = chunks.filter((chunk) => chunk.type === "text-delta" || chunk.type === "tool-input-delta");
 									trace.addMetric("tokens_per_second", textChunks.length / ((endTime - startTime) / 1000));
-									if (generation) processStreamV2(chunks, span, trace, generation, modelId, maximMetadata);
+									if (generation) processStreamV3(chunks, span, trace, generation, modelId, maximMetadata);
 
 									if (promptMessages.length > 0) {
 										const toolCalls = promptMessages.filter((msg) => msg.role === "tool");
@@ -328,17 +368,14 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 									// End trace if:
 									// 1. User explicitly provided traceId (they manage it) - but don't reset state
 									// 2. OR response has no tool calls (sequence is complete or single call)
-									const shouldEndTrace = maximMetadata?.traceId || !hasToolCallsInResponse;
-
-									if (shouldEndTrace) {
-										// Reset state when ending trace (only if user didn't provide traceId)
-										if (!maximMetadata?.traceId) {
-											wrapperInstance.currentTraceId = null;
-											wrapperInstance.currentTrace = null;
-											wrapperInstance.isInToolCallSequence = false;
-											trace.end();
-										}
+									if (!hasToolCallsInResponse) {
+										// Reset attachment tracking when sequence is complete
+										wrapperInstance.addedAttachmentHashes.clear();
 									}
+									wrapperInstance.currentTraceId = null;
+									wrapperInstance.currentTrace = null;
+									wrapperInstance.isInToolCallSequence = false;
+									trace.end();
 								} catch (error) {
 									console.error("[MaximSDK] Processing failed:", error);
 									if (generation) {
@@ -396,17 +433,17 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 			// End trace if:
 			// 1. User explicitly provided traceId (they manage it) - but don't reset state
 			// 2. OR response has no tool calls (sequence is complete or single call)
-			const shouldEndTrace = maximMetadata?.traceId || !hasToolCallsInResponse;
 
-			if (shouldEndTrace) {
-				// Reset state when ending trace (only if user didn't provide traceId)
-				if (!maximMetadata?.traceId) {
-					this.currentTraceId = null;
-					this.currentTrace = null;
-					this.isInToolCallSequence = false;
-					trace.end();
-				}
+			// Reset state when ending trace (only if user didn't provide traceId)
+			// Note: hasToolCallsInResponse is not available here, so we check isInToolCallSequence
+			if (!this.isInToolCallSequence) {
+				// Reset attachment tracking when sequence is complete
+				this.addedAttachmentHashes.clear();
 			}
+			this.currentTraceId = null;
+			this.currentTrace = null;
+			this.isInToolCallSequence = false;
+			trace.end();
 		}
 	}
 
@@ -444,5 +481,23 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 	 */
 	get supportedUrls() {
 		return this.model.supportedUrls;
+	}
+
+	/**
+	 * Creates a simple hash of a buffer for duplicate detection.
+	 * Uses a combination of buffer length and a sample of the data.
+	 *
+	 * @private
+	 * @param buffer - The buffer to hash
+	 * @returns A hash string identifying the buffer
+	 */
+	private hashBuffer(buffer: Buffer): string {
+		// Use length and first/last bytes for a simple but effective hash
+		// This is sufficient for duplicate detection without being too expensive
+		const length = buffer.length;
+		const firstBytes = buffer.slice(0, Math.min(16, length)).toString("hex");
+		const lastBytes = length > 16 ? buffer.slice(-16).toString("hex") : "";
+		const middleBytes = length > 32 ? buffer.slice(Math.floor(length / 2) - 8, Math.floor(length / 2) + 8).toString("hex") : "";
+		return `${length}:${firstBytes}:${middleBytes}:${lastBytes}`;
 	}
 }
