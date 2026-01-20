@@ -1,12 +1,12 @@
 import { v4 as uuid } from "uuid";
-import { generateText, generateObject, streamText } from "ai";
+import { generateText, generateObject, streamText, Output } from "ai";
 import { google } from "@ai-sdk/google";
 import { z } from "zod/v3";
 import * as dotenv from "dotenv";
-import { wrapMaximAISDKModel } from "src/lib/logger/vercel/wrapper";
-import { MaximVercelProviderMetadata } from "src/lib/logger/vercel/utils";
+import { wrapMaximAISDKModel } from "src/lib/logger/vercel";
 import { Maxim } from "src/lib/maxim";
 import { Trace } from "src/lib/logger/components";
+import { MaximVercelProviderMetadata } from "vercel-ai-sdk";
 
 // Load environment variables
 dotenv.config();
@@ -75,11 +75,12 @@ const CityPredictionSchema = z.object({
 
 // Extract structured data
 async function extractStructuredData(model: any, rawOutput: string, trace: Trace, spanId: string) {
-	const { object } = await generateObject({
+	const result = await generateText({
 		model,
 		prompt: "Extract the desired information from this text: \n" + rawOutput,
-		schema: CityPredictionSchema,
-		output: "array",
+		output: Output.object({
+			schema: CityPredictionSchema,
+		}),
 		providerOptions: {
 			maxim: {
 				traceId: trace.id,
@@ -88,7 +89,7 @@ async function extractStructuredData(model: any, rawOutput: string, trace: Trace
 		},
 	});
 
-	return object;
+	return result.output;
 }
 
 // Format the final output
