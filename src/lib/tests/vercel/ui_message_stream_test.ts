@@ -10,8 +10,8 @@ import {
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod/v3";
 import * as dotenv from "dotenv";
-import { wrapMaximAISDKModel } from "src/lib/logger/vercel/wrapper";
-import { MaximVercelProviderMetadata } from "src/lib/logger/vercel/utils";
+import { wrapMaximAISDKModel } from "src/lib/logger/vercel";
+import { MaximVercelProviderMetadata } from "vercel-ai-sdk";
 import { Maxim } from "src/lib/maxim";
 
 // Load environment variables
@@ -86,7 +86,7 @@ async function processTrace(
 	const stream = createUIMessageStream({
 		execute: async ({ writer: dataStream }) => {
 			// Convert validated messages to model messages
-			const modelMessages = convertToModelMessages(validatedMessages, {
+			const modelMessages = await convertToModelMessages(validatedMessages, {
 				tools: {
 					getWeatherInfo,
 				},
