@@ -89,7 +89,8 @@ That's it! No need to modify your existing chains, agents, or LLM calls.
 #### Complete Setup Example
 
 ```js
-import { MaximLangchainTracer } from "@maximai/maxim-js";
+import { Maxim } from "@maximai/maxim-js";
+import { MaximLangchainTracer } from "@maximai/maxim-js/langchain";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 
@@ -522,6 +523,10 @@ Behavior:
 For projects still using our separate package [Maxim Langchain Tracer](https://www.npmjs.com/package/@maximai/maxim-js-langchain) (now deprecated in favor of the built-in tracer above), you can use our built-in tracer as is by just replacing the import and installing `@langchain/core`.
 
 ## Version changelog
+
+### v6.28.0
+
+- fix: Check for log repository does not block logger creation.
 
 ### v6.27.0
 
