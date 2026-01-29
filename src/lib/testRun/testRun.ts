@@ -24,6 +24,8 @@ import {
 	promptVersionIdOutputFunctionClosure,
 	runLocalEvaluations,
 	runOutputFunction,
+	simulationPromptVersionIdOutputFunctionClosure,
+	simulationWorkflowIdOutputFunctionClosure,
 	workflowIdOutputFunctionClosure,
 } from "./runUtils";
 import { sanitizeData, sanitizeEvaluators } from "./sanitizationUtils";
@@ -103,9 +105,6 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 			}
 			if (config.simulationConfig.responseFields && config.simulationConfig.responseFields.length > 0 && !config.workflow) {
 				errors.push("responseFields in simulationConfig can only be used with withWorkflowId, not with withPromptVersionId.");
-			}
-			if (config.evaluators && config.evaluators.find((e) => typeof e !== "string")) {
-				errors.push("Local (custom) evaluators cannot be used with simulation config. Only platform evaluators are allowed.");
 			}
 		}
 
@@ -210,15 +209,59 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				if (outputFunction) {
 					outputFunctionToExecute = outputFunction;
 				} else {
+					// Check if we need to use simulation endpoints (simulationConfig + local evaluators)
+					const hasLocalEvaluators =
+						evaluators.filter((e) => typeof e !== "string" && "evaluationFunction" in e).length > 0;
+					const useSimulationEndpoints = config.simulationConfig && hasLocalEvaluators;
+
 					if (workflow) {
-						outputFunctionToExecute = workflowIdOutputFunctionClosure<T>(workflow.id, APITestRunService, workflow.contextToEvaluate);
+						if (useSimulationEndpoints) {
+							const contextToEvaluateForSimulation = contextToEvaluate ?? workflow.contextToEvaluate;
+							outputFunctionToExecute = simulationWorkflowIdOutputFunctionClosure<T>(
+								testRun.id,
+								workflow.id,
+								workspaceId,
+								scenario,
+								APITestRunService,
+								config.simulationConfig!,
+								contextToEvaluateForSimulation,
+								row.id,
+								input,
+								expectedSteps,
+								timeoutInMinutes,
+							);
+						} else {
+							outputFunctionToExecute = workflowIdOutputFunctionClosure<T>(
+								workflow.id,
+								APITestRunService,
+								workflow.contextToEvaluate,
+							);
+						}
 					} else if (promptVersion) {
-						outputFunctionToExecute = promptVersionIdOutputFunctionClosure<T>(
-							promptVersion.id,
-							input ?? "",
-							APITestRunService,
-							promptVersion.contextToEvaluate,
-						);
+						if (useSimulationEndpoints) {
+							// Use contextToEvaluate from row data, or fallback to promptVersion.contextToEvaluate
+							const contextToEvaluateForSimulation = contextToEvaluate ?? promptVersion.contextToEvaluate;
+							outputFunctionToExecute = simulationPromptVersionIdOutputFunctionClosure<T>(
+								testRun.id,
+								promptVersion.id,
+								workspaceId,
+								scenario,
+								APITestRunService,
+								config.simulationConfig!,
+								contextToEvaluateForSimulation,
+								row.id,
+								input,
+								expectedSteps,
+								timeoutInMinutes,
+							);
+						} else {
+							outputFunctionToExecute = promptVersionIdOutputFunctionClosure<T>(
+								promptVersion.id,
+								input ?? "",
+								APITestRunService,
+								promptVersion.contextToEvaluate,
+							);
+						}
 					} else if (promptChainVersion) {
 						outputFunctionToExecute = promptChainVersionIdOutputFunctionClosure<T>(
 							promptChainVersion.id,
@@ -234,6 +277,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				}
 
 				const output = await runOutputFunction(outputFunctionToExecute, row.data);
+
 				if (output.retrievedContextToEvaluate) {
 					if (contextToEvaluate) {
 						logger.info(
@@ -253,7 +297,12 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				)[];
 
 				if (localEvaluators.length > 0) {
-					localEvaluationResults = await runLocalEvaluations(localEvaluators, row.data, output as any, contextToEvaluate);
+					localEvaluationResults = await runLocalEvaluations(
+						localEvaluators,
+						row.data,
+						output as any,
+						contextToEvaluate,
+					)
 				}
 
 				// 4. push the test run entry
@@ -370,6 +419,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 									id: localEvaluatorNameToIdAndPassFailCriteriaMap.get(result.name)!.id,
 								}))
 							: undefined,
+						simulationMeta: output.simulationMeta,
 					},
 				});
 

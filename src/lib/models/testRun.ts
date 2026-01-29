@@ -144,12 +144,28 @@ export interface TestRunLogger<T extends DataStructure | undefined = undefined> 
  * @property data The main string output of the run.
  * @property retrievedContextToEvaluate Optional context retrieved during the run.
  * @property messages Optional traces of the run (e.g. chat history).
+ * @property simulationMeta Optional simulation metadata for simulation runs.
  * @property meta Optional metadata about the run (usage, cost, etc.).
  */
+
+/**
+ * Metadata returned from simulation endpoints.
+ * Contains the full simulation conversation and trace data.
+ */
+export type SimulationMeta = {
+	sessionId?: string;
+	simulationId?: string;
+	messages: unknown[];
+	trace?: unknown[];
+	turns?: unknown[]; // For workflow simulations
+};
+
 export type YieldedOutput = {
 	data: string;
+	simulationOutputs?: string[];
 	retrievedContextToEvaluate?: string | string[];
 	messages?: unknown[];
+	simulationMeta?: SimulationMeta;
 	meta?: {
 		usage?:
 			| {
@@ -712,6 +728,7 @@ export type MaximAPITestRunEntry = {
 	};
 	dataEntry: Record<string, string | string[] | Variable | null | undefined>;
 	localEvaluationResults?: (LocalEvaluationResult & { id: string })[];
+	simulationMeta?: SimulationMeta;
 };
 
 export type MaximAPITestRunStatusResponse =
@@ -770,6 +787,7 @@ export type MaximAPITestRunEntryExecutePromptForDataPayload = {
 	input: string;
 	dataEntry?: Record<string, string | string[] | null | undefined>;
 	contextToEvaluate?: string;
+	simulationConfig?: TestRunConfig["simulationConfig"];
 };
 
 export type MaximAPITestRunEntryExecutePromptForDataResponse =
@@ -810,6 +828,189 @@ export type MaximAPITestRunEntryExecutePromptChainForDataResponse =
 				output?: string;
 				messages?: unknown[];
 				contextToEvaluate?: string;
+				usage?: {
+					promptTokens: number;
+					completionTokens: number;
+					totalTokens: number;
+					latency?: number;
+				};
+				cost?: {
+					input: number;
+					output: number;
+					total: number;
+				};
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+// ===== Simulation Execution Types =====
+
+export type MaximAPITestRunEntryExecuteSimulationPromptPayload = {
+	testRunId: string;
+	promptVersionId: string;
+	workspaceId: string;
+	datasetEntryId?: string;
+	entry?: {
+		input?: string | null;
+		scenario?: string | null;
+		expectedSteps?: string | null;
+		contextToEvaluate?: string | string[] | null;
+		dataEntry?: Record<string, string | string[] | null | undefined> | null;
+	};
+	simulationConfig: TestRunConfig["simulationConfig"];
+};
+
+// POST response - returns workspaceId and testRunEntryId
+export type MaximAPITestRunEntryExecuteSimulationPromptPostResponse =
+	| {
+			data: {
+				workspaceId: string;
+				testRunEntryId: string;
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+// GET response - returns status or completed data
+export type MaximAPITestRunEntryExecuteSimulationPromptGetResponse =
+	| {
+			data: {
+				status: "QUEUED" | "RUNNING" | "COMPLETE" | "FAILED" | "STOPPED";
+				// When status is COMPLETE, data is included
+				outputs?: string[];
+				messages?: unknown[];
+				trace?: unknown[];
+				usage?: {
+					promptTokens: number;
+					completionTokens: number;
+					totalTokens: number;
+					latency: number;
+				};
+				cost?: {
+					input: number;
+					output: number;
+					total: number;
+				};
+				sessionId?: string;
+				simulationId?: string;
+				testRunEntryId?: string;
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+// Legacy response type for backward compatibility (if needed)
+export type MaximAPITestRunEntryExecuteSimulationPromptResponse =
+	| {
+			data: {
+				output?: string;
+				messages?: unknown[];
+				trace?: unknown[];
+				contextToEvaluate?: string;
+				sessionId?: string;
+				simulationId?: string;
+				latency?: number;
+				usage?: {
+					promptTokens: number;
+					completionTokens: number;
+					totalTokens: number;
+					latency?: number;
+				};
+				cost?: {
+					input: number;
+					output: number;
+					total: number;
+				};
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+export type MaximAPITestRunEntryExecuteSimulationWorkflowPayload = {
+	testRunId: string;
+	workflowId: string;
+	workspaceId: string;
+	datasetEntryId?: string;
+	entry?: {
+		input?: string | null;
+		scenario?: string | null;
+		expectedSteps?: string | null;
+		contextToEvaluate?: string | string[] | null;
+		dataEntry?: Record<string, string | string[] | null | undefined> | null;
+	};
+	simulationConfig: TestRunConfig["simulationConfig"];
+};
+
+// POST response - returns workspaceId and testRunEntryId
+export type MaximAPITestRunEntryExecuteSimulationWorkflowPostResponse =
+	| {
+			data: {
+				workspaceId: string;
+				testRunEntryId: string;
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+// GET response - returns status or completed data
+export type MaximAPITestRunEntryExecuteSimulationWorkflowGetResponse =
+	| {
+			data: {
+				status: "QUEUED" | "RUNNING" | "COMPLETE" | "FAILED" | "STOPPED";
+				// When status is COMPLETE, data is included
+				outputs?: string[];
+				turns?: unknown[];
+				trace?: unknown[];
+				usage?: {
+					promptTokens: number;
+					completionTokens: number;
+					totalTokens: number;
+					latency: number;
+				};
+				cost?: {
+					input: number;
+					output: number;
+					total: number;
+				};
+				sessionId?: string;
+				simulationId?: string;
+				testRunEntryId?: string;
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+// Legacy response type for backward compatibility (if needed)
+export type MaximAPITestRunEntryExecuteSimulationWorkflowResponse =
+	| {
+			data: {
+				output?: string;
+				messages?: unknown[];
+				trace?: unknown[];
+				turns?: unknown[];
+				contextToEvaluate?: string;
+				sessionId?: string;
+				simulationId?: string;
+				latency: number;
 				usage?: {
 					promptTokens: number;
 					completionTokens: number;

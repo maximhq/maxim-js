@@ -1,6 +1,6 @@
 import type { Data, DataStructure } from "../models/dataset";
 
-type LocalEvaluatorReturnType = {
+export type LocalEvaluatorReturnType = {
 	score: number | boolean | string;
 	reasoning?: string;
 };
@@ -70,6 +70,7 @@ export type VariableMapping = Record<string, VariableMappingFunction>;
 export interface Result {
 	output: string;
 	contextToEvaluate?: string | string[];
+	simulationOutputs?: string[] | undefined;
 }
 
 export type LocalEvaluationFunction<T extends DataStructure | undefined = undefined> = (
@@ -184,6 +185,7 @@ export type LocalEvaluationResult = {
 	passFailCriteria: PassFailCriteriaType;
 	/** The output string that was used for this evaluator's evaluation (may be mangled) */
 	output?: string;
+	simulationOutputs?: string[];
 };
 
 export type HumanEvaluationConfig = {
