@@ -2,18 +2,13 @@ import { v4 as uuid } from "uuid";
 import { MaximAttachmentAPI } from "../apis/attachment";
 import { MaximLogsAPI } from "../apis/logs";
 import { MaximCache } from "../cache/cache";
+import { platform } from "../platform";
+import type { Attachment, AttachmentWithKey, FileAttachmentWithKey, FileDataAttachmentWithKey } from "../types";
 import { Mutex } from "../utils/mutex";
 import { Queue } from "../utils/queue";
 import { generateUniqueId } from "../utils/utils";
-import type {
-	Attachment,
-	FileDataAttachmentWithKey,
-	AttachmentWithKey,
-	FileAttachmentWithKey,
-} from "../types";
 import { populateAttachmentFields } from "./components/attachment";
 import { CommitLog, Entity } from "./components/types";
-import { platform } from "../platform";
 import { ILogWriter } from "./types";
 
 export type LogWriterConfig = {
@@ -98,11 +93,14 @@ export class LogWriter implements ILogWriter {
 				}
 				const content = logs.map((l) => l.serialize()).join("\n");
 				const filename = `logs-${new Date().toISOString()}.log`;
-				platform.fs.writeFile(`${this.logsDir}/${filename}`, content).then(() => {
-					resolve(`${this.logsDir}/${filename}`);
-				}).catch((err) => {
-					reject(err);
-				});
+				platform.fs
+					.writeFile(`${this.logsDir}/${filename}`, content)
+					.then(() => {
+						resolve(`${this.logsDir}/${filename}`);
+					})
+					.catch((err) => {
+						reject(err);
+					});
 			});
 		} catch (err) {
 			if (this._raiseExceptions) {
@@ -422,9 +420,11 @@ export class LogWriter implements ILogWriter {
 			const MUTEX_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 			// Create a promise that resolves after the timeout
-			const timeoutPromise = new Promise<void>((_, reject) => {
-				setTimeout(() => {
-					reject(new Error(`Mutex acquisition timed out after ${MUTEX_TIMEOUT_MS}ms`));
+			let timeoutId: ReturnType<typeof setTimeout>;
+			const timeoutPromise = new Promise<void>((resolve) => {
+				timeoutId = setTimeout(() => {
+					console.warn(`[MaximSDK] Mutex acquisition timed out after ${MUTEX_TIMEOUT_MS}ms. Skipping flush.`);
+					resolve();
 				}, MUTEX_TIMEOUT_MS);
 			});
 
@@ -451,6 +451,7 @@ export class LogWriter implements ILogWriter {
 							resolve();
 						}
 					});
+					clearTimeout(timeoutId);
 					resolve();
 				}),
 				timeoutPromise,
