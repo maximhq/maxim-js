@@ -235,6 +235,7 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 					trace.end();
 				}
 			}
+			await this.logger.flush();
 		}
 	}
 
@@ -333,6 +334,9 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 											trace.end();
 										}
 									}
+
+									// Flush logs after processStreamV2 and tool-result logging complete
+									await wrapperInstance.logger.flush();
 								} catch (error) {
 									console.error("[MaximSDK] Processing failed:", error);
 									if (generation) {
@@ -341,6 +345,8 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 										});
 										generation.end();
 									}
+									// Flush logs even on error
+									await wrapperInstance.logger.flush();
 								}
 
 								// Now close the stream
@@ -365,6 +371,8 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 							});
 							generation.end();
 						}
+						// Flush logs on stream error
+						await wrapperInstance.logger.flush();
 					}
 				},
 			});
@@ -385,6 +393,9 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 			// Log error details
 			console.error("[MaximSDK] doStream failed:", error);
 
+			// Flush logs before throwing error
+			await this.logger.flush();
+
 			throw error;
 		} finally {
 			// End trace if:
@@ -401,6 +412,7 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 					trace.end();
 				}
 			}
+			// Note: flush() is now called after stream completion and in error paths, not here
 		}
 	}
 

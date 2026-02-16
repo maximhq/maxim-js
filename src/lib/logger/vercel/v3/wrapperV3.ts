@@ -255,6 +255,7 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 			this.currentTrace = null;
 			this.isInToolCallSequence = false;
 			trace.end();
+			await this.logger.flush();
 		}
 	}
 
@@ -376,6 +377,9 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 									wrapperInstance.currentTrace = null;
 									wrapperInstance.isInToolCallSequence = false;
 									trace.end();
+
+									// Flush logs after processStreamV3 and tool-result logging complete
+									await wrapperInstance.logger.flush();
 								} catch (error) {
 									console.error("[MaximSDK] Processing failed:", error);
 									if (generation) {
@@ -384,6 +388,8 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 										});
 										generation.end();
 									}
+									// Flush logs even on error
+									await wrapperInstance.logger.flush();
 								}
 
 								// Now close the stream
@@ -408,6 +414,8 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 							});
 							generation.end();
 						}
+						// Flush logs on stream error
+						await wrapperInstance.logger.flush();
 					}
 				},
 			});
@@ -427,6 +435,9 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 
 			// Log error details
 			console.error("[MaximSDK] doStream failed:", error);
+
+			// Flush logs before throwing error
+			await this.logger.flush();
 
 			throw error;
 		} finally {
