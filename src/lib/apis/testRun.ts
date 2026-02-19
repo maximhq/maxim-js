@@ -4,6 +4,8 @@ import { MaximAPIResponse } from "../models/deployment";
 import { HumanEvaluationConfig, MaximAPIEvaluatorFetchResponse } from "../models/evaluator";
 import {
 	MaximAPICreateTestRunResponse,
+	MaximAPITestRunEntryCreatePayload,
+	MaximAPITestRunEntryCreateResponse,
 	MaximAPITestRunEntryExecutePromptChainForDataPayload,
 	MaximAPITestRunEntryExecutePromptChainForDataResponse,
 	MaximAPITestRunEntryExecutePromptForDataPayload,
@@ -24,7 +26,7 @@ import {
 	TestRunConfig,
 	TestRunResult,
 } from "../models/testRun";
-import type { UrlAttachment } from "../types";
+import type { Attachment, UrlAttachment } from "../types";
 import { ExtractAPIDataType } from "../utils/utils";
 import { MaximAPI } from "./maxim";
 
@@ -45,6 +47,7 @@ export class MaximTestRunAPI extends MaximAPI {
 		humanEvaluationConfig?: HumanEvaluationConfig,
 		tags?: string[],
 		simulationConfig?: TestRunConfig["simulationConfig"],
+		connectedRepoId?: string,
 	): Promise<ExtractAPIDataType<MaximAPICreateTestRunResponse>> {
 		return new Promise((resolve, reject) => {
 			this.fetch<MaximAPICreateTestRunResponse>(`/api/sdk/v2/test-run/create`, {
@@ -65,6 +68,7 @@ export class MaximTestRunAPI extends MaximAPI {
 					humanEvaluationConfig,
 					tags,
 					simulationConfig,
+					connectedRepoId,
 				}),
 			})
 				.then((response) => {
@@ -225,16 +229,145 @@ export class MaximTestRunAPI extends MaximAPI {
 			: (rawDataEntry as Record<string, Variable | undefined>);
 	}
 
+	/**
+	 * Converts Variable format to API format for dataEntry.
+	 * - TEXT Variable -> { type: "text", payload: string }
+	 * - FILE Variable -> { type: "file", payload: { files: [...], text?: string } }
+	 */
+	private convertVariableToAPIFormat(
+		variable: Variable,
+	): { type: "text"; payload: string } | { type: "file"; payload: { files: Array<{ id?: string; url: string; name?: string; type: string }>; text?: string } } {
+		if (variable.type === VariableType.TEXT || variable.type === VariableType.JSON) {
+			return {
+				type: "text",
+				payload: variable.payload,
+			};
+		}
+
+		if (variable.type === VariableType.FILE) {
+			// Convert Attachment[] to API format
+			const files = variable.payload.map((attachment) => {
+				if (attachment.type === "url") {
+					return {
+						id: attachment.id,
+						url: attachment.url,
+						name: attachment.name,
+						type: attachment.mimeType || "application/octet-stream",
+					};
+				} else if (attachment.type === "file") {
+					// For file attachments, we need the URL - this might need to be handled differently
+					// For now, we'll use the path as URL if available
+					return {
+						id: attachment.id,
+						url: attachment.path, // Note: This might need adjustment based on how file paths are handled
+						name: attachment.name,
+						type: attachment.mimeType || "application/octet-stream",
+					};
+				} else {
+					// fileData attachments - these need special handling
+					// For now, we'll create a placeholder structure
+					return {
+						id: attachment.id,
+						url: "", // fileData attachments don't have URLs
+						name: attachment.name,
+						type: attachment.mimeType || "application/octet-stream",
+					};
+				}
+			});
+
+			return {
+				type: "file",
+				payload: {
+					files,
+				},
+			};
+		}
+
+		// Fallback (should not happen)
+		return {
+			type: "text",
+			payload: "",
+		};
+	}
+
+	/**
+	 * Converts dataEntry from Variable format to API format.
+	 * Handles the conversion of FILE variables to the API's expected file structure.
+	 */
+	private convertDataEntryToAPIFormat(
+		dataEntry: Record<string, string | string[] | Variable | null | undefined>,
+	): Record<string, { type: "text"; payload: string } | { type: "file"; payload: { files: Array<{ id?: string; url: string; name?: string; type: string }>; text?: string } } | null | undefined> {
+		const result: Record<string, { type: "text"; payload: string } | { type: "file"; payload: { files: Array<{ id?: string; url: string; name?: string; type: string }>; text?: string } } | null | undefined> = {};
+
+		for (const [key, value] of Object.entries(dataEntry)) {
+			if (value === null || value === undefined) {
+				result[key] = value;
+				continue;
+			}
+
+			if (this.isVariable(value)) {
+				result[key] = this.convertVariableToAPIFormat(value);
+			} else if (typeof value === "string") {
+				result[key] = {
+					type: "text",
+					payload: value,
+				};
+			} else if (Array.isArray(value)) {
+				// Convert string array to file format
+				const files = value.map((url, index) => ({
+					id: `${key}-${index}`,
+					url: url,
+					type: "application/octet-stream",
+				}));
+				result[key] = {
+					type: "file",
+					payload: {
+						files,
+					},
+				};
+			}
+		}
+
+		return result;
+	}
+
+	public async createTestRunEntry({
+		testRun,
+	}: MaximAPITestRunEntryCreatePayload): Promise<ExtractAPIDataType<MaximAPITestRunEntryCreateResponse>> {
+		return new Promise((resolve, reject) => {
+			this.fetch<MaximAPITestRunEntryCreateResponse>(`/api/sdk/v1/test-run/test-run-entry/create`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json",
+				},
+				body: JSON.stringify({
+					testRun,
+				}),
+			})
+				.then((response) => {
+					if ("error" in response) {
+						reject(response.error);
+					} else {
+						resolve(response.data);
+					}
+				})
+				.catch((error) => {
+					reject(error);
+				});
+		});
+	}
+
 	public async pushTestRunEntry({ testRun, runConfig, entry, localSimulation }: MaximAPITestRunEntryPushPayload): Promise<void> {
 		const convertedEntry = entry.dataEntry
 			? {
 					...entry,
-					dataEntry: this.normalizeDataEntryToVariables(entry.dataEntry),
+					dataEntry: this.convertDataEntryToAPIFormat(entry.dataEntry),
 				}
 			: entry;
 
 		return new Promise((resolve, reject) => {
-			this.fetch<MaximAPIResponse>(`/api/sdk/v2/test-run/push`, {
+			this.fetch<MaximAPIResponse>(`/api/sdk/v4/test-run/push`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",

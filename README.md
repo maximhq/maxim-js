@@ -559,19 +559,24 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 - feat: Adds a new optional field `maximPromptVersionId` in `GenerationConfig`
 
 ### v6.23.0
+
 - feat: Added support for simulationConfig in workflow and prompt test runs, enabling simulation runs
 
 ### v6.22.0
+
 - fix: Fixes AI SDK multiple traces showing same input for session conversations
 
 ### v6.21.0
+
 - fix: Fixes multiple trace issues and same input for tool call executions
 - fix: Uses v2 API for test run entry push
 
 ### v6.20.1
+
 - fix: Adds `tool-input-delta` to be recognized as the first chunk
 
 ### v6.20.0
+
 - feat: Added TTFT and TPS metrics in AI SDK wrappers
 - fix: Fixes input in AI SDK v1 wrapper
 

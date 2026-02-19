@@ -26,6 +26,21 @@ export async function runOutputFunction<T extends DataStructure | undefined>(
 	}
 }
 
+export async function runOutputFunctionWithTracing<T extends DataStructure | undefined>(
+	outputFunction: NonNullable<TestRunConfig<T>["outputFunctionWithTracing"]>,
+	dataEntry: Data<T>,
+	traceId: string,
+): Promise<ReturnType<NonNullable<TestRunConfig<T>["outputFunctionWithTracing"]>>> {
+	try {
+		const result = await outputFunction(dataEntry, traceId);
+		return result;
+	} catch (err) {
+		throw new Error(`Error while running output function`, {
+			cause: err,
+		});
+	}
+}
+
 /**
  * Runs local evaluations on the data entry.
  * @param evaluators - The evaluators to run

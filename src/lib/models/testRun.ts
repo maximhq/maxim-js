@@ -1,4 +1,5 @@
 import type { Data, DataStructure, DataValue, Variable } from "../models/dataset";
+import type { MaximLogger } from "../logger/logger";
 import type {
 	CombinedLocalEvaluatorType,
 	HumanEvaluationConfig,
@@ -340,6 +341,13 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 			turnNumber: number;
 		},
 	) => YieldedOutput | Promise<YieldedOutput>;
+	outputFunctionWithTracing?: (data: Data<T>, traceId: string, simulationContext?: {
+		conversationHistory: SimulationConversationTurn[];
+		currentUserInput: Record<string, unknown>;
+		turnNumber: number;
+	}) => YieldedOutput | Promise<YieldedOutput>;
+	maximLogger?: MaximLogger;
+	disableDefaultTraceCreation?: boolean;
 	promptVersion?: {
 		id: string;
 		contextToEvaluate?: string;
@@ -558,9 +566,11 @@ export type TestRunBuilder<T extends DataStructure | undefined = undefined> = {
 	 *                 },
 	 *             },
 	 *         };
-	 *     });
+	 *     }, maximLogger);
 	 */
-	yieldsOutput: (outputFunction: TestRunConfig<T>["outputFunction"]) => TestRunBuilder<T>;
+	yieldsOutput: (outputFunction: TestRunConfig<T>["outputFunction"], maximLogger?: MaximLogger) => TestRunBuilder<T>;
+
+	yieldsOutputWithTracing: (outputFunction: TestRunConfig<T>["outputFunctionWithTracing"], maximLogger: MaximLogger, disableDefaultTraceCreation?: boolean) => TestRunBuilder<T>;
 
 	/**
 	 * Sets the prompt version ID for the test run. Optionally, you can also set the context to evaluate for the prompt. (Note: setting the context to evaluate will end up overriding the CONTEXT_TO_EVALUATE dataset column value)
@@ -729,6 +739,28 @@ export type MaximAPICreateTestRunResponse =
 			};
 	  };
 
+export type MaximAPITestRunEntryCreatePayload = {
+	testRun: {
+		id: string;
+		datasetEntryId?: string;
+		datasetId?: string;
+		workspaceId: string;
+		humanEvaluationConfig?: {
+			emails: string[];
+			instructions: string;
+			requester: string;
+		};
+		evalConfig: unknown;
+		parentTestRunId?: string;
+	};
+};
+
+export type MaximAPITestRunEntryCreateResponse = {
+	data: {
+		id: string;
+	};
+};
+
 export type MaximAPITestRunEntryPushPayload<T extends DataStructure | undefined = undefined> = {
 	testRun: {
 		id: string;
@@ -765,6 +797,7 @@ export type MaximAPITestRunEntryPushPayload<T extends DataStructure | undefined 
 };
 
 export type MaximAPITestRunEntry = {
+	id?: string;
 	input?: string;
 	expectedOutput?: string;
 	contextToEvaluate?: string | string[];
@@ -774,6 +807,7 @@ export type MaximAPITestRunEntry = {
 	meta?: {
 		variables?: Record<string, Variable>;
 		sdkVariables?: Record<string, Variable>;
+		connectedTraceId?: string;
 	};
 	dataEntry: Record<string, string | string[] | Variable | null | undefined>;
 	localEvaluationResults?: (LocalEvaluationResult & { id: string })[];
