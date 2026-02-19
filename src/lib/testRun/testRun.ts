@@ -26,6 +26,7 @@ import {
 	runOutputFunction,
 	simulationPromptVersionIdOutputFunctionClosure,
 	simulationWorkflowIdOutputFunctionClosure,
+	simulationYieldsOutputFunctionClosure,
 	workflowIdOutputFunctionClosure,
 } from "./runUtils";
 import { sanitizeData, sanitizeEvaluators } from "./sanitizationUtils";
@@ -84,27 +85,38 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				"Output function or prompt version id, prompt chain version id, or workflow id is required to run a test. You can use either yieldsOutput, withPromptVersionId, withPromptChainVersionId or withWorkflowId to set them respectively.",
 			);
 		}
-		if (
-			(config.outputFunction ? 1 : 0) + (config.promptVersion ? 1 : 0) + (config.promptChainVersion ? 1 : 0) + (config.workflow ? 1 : 0) !==
-			1
-		) {
+		const hasOutputFunction = !!config.outputFunction;
+		const hasPromptVersion = !!config.promptVersion;
+		const hasPromptChainVersion = !!config.promptChainVersion;
+		const hasWorkflow = !!config.workflow;
+		const outputSourceCount = (hasOutputFunction ? 1 : 0) + (hasPromptVersion ? 1 : 0) + (hasPromptChainVersion ? 1 : 0) + (hasWorkflow ? 1 : 0);
+
+		// Simulation + yieldsOutput: requires outputFunction + (promptVersion OR workflow)
+		if (config.simulationConfig && hasOutputFunction) {
+			if (!hasPromptVersion && !hasWorkflow) {
+				errors.push("Simulation config with yieldsOutput requires either withPromptVersionId or withWorkflowId to be set.");
+			}
+			if (hasPromptChainVersion) {
+				errors.push("Simulation config with yieldsOutput cannot use withPromptChainVersionId. Use withPromptVersionId or withWorkflowId.");
+			}
+			if (hasPromptVersion && hasWorkflow) {
+				errors.push("Simulation config with yieldsOutput cannot use both withPromptVersionId and withWorkflowId. Set exactly one.");
+			}
+		} else if (outputSourceCount !== 1) {
 			errors.push("Exactly one of outputFunction, promptVersionId, promptChainVersionId, or workflowId must be set.");
 		}
 		if (!config.data) {
 			errors.push("Data or dataset id is required to run a test.");
 		}
 		if (config.simulationConfig) {
-			if (config.outputFunction) {
-				errors.push("Simulation config cannot be used with yieldsOutput. Use withWorkflowId or withPromptVersionId instead.");
-			}
 			if (config.promptChainVersion) {
-				errors.push("Simulation config cannot be used with withPromptChainVersionId. Use withWorkflowId or withPromptVersionId instead.");
+				errors.push("Simulation config cannot be used with withPromptChainVersionId. Use withWorkflowId, withPromptVersionId, or yieldsOutput instead.");
 			}
-			if (!config.workflow && !config.promptVersion) {
-				errors.push("Simulation config requires either withWorkflowId or withPromptVersionId to be set.");
+			if (!config.workflow && !config.promptVersion && !config.outputFunction) {
+				errors.push("Simulation config requires either withWorkflowId, withPromptVersionId, or yieldsOutput to be set.");
 			}
 			if (config.simulationConfig.responseFields && config.simulationConfig.responseFields.length > 0 && !config.workflow) {
-				errors.push("responseFields in simulationConfig can only be used with withWorkflowId, not with withPromptVersionId.");
+				errors.push("responseFields in simulationConfig can only be used with withWorkflowId, not with withPromptVersionId or yieldsOutput.");
 			}
 		}
 
@@ -203,12 +215,206 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				: undefined;
 
 			// 2. get the output
-			// Make sure if its local workflow or remote workflow
-			if (outputFunction || evaluators.filter((e) => typeof e !== "string").length > 0) {
+			if(config.simulationConfig && outputFunction) {
+				// Determine entity type (prompt or workflow)
+				const entityType = workflow ? "workflow" : "prompt";
+				const promptVersionId = promptVersion?.id;
+				const workflowIdForSim = workflow?.id;
+
+				let contextToEvaluateForSimulation = contextToEvaluate ?? promptVersion?.contextToEvaluate ?? workflow?.contextToEvaluate;
+				
+				// Build the simulation closure
+				const outputFunctionToExecute = simulationYieldsOutputFunctionClosure<T>(
+					testRun.id,
+					workspaceId,
+					config.simulationConfig,
+					outputFunction,
+					APITestRunService,
+					entityType,
+					promptVersionId,
+					workflowIdForSim,
+					row.id,
+					input,
+					scenario,
+					expectedSteps,
+					contextToEvaluateForSimulation,
+					timeoutInMinutes,
+					logger,
+				);
+
+				// Execute the simulation
+				const output = await runOutputFunction(outputFunctionToExecute, row.data);
+
+				if (output.retrievedContextToEvaluate) {
+					if (contextToEvaluateForSimulation) {
+						logger.info(
+							`Detected retrieved context returned from output function for row ${
+								index + 1
+							} that had contextToEvaluate set from the dataset.\nOverriding the contextToEvaluate from dataset with the retrieved context`,
+						);
+					}
+					contextToEvaluateForSimulation = output.retrievedContextToEvaluate;
+				}
+
+				// 3. run evaluations
+				let localEvaluationResults: LocalEvaluationResult[] | undefined = undefined;
+				const localEvaluators = evaluators.filter((e) => typeof e !== "string" && "evaluationFunction" in e) as (
+					| LocalEvaluatorType<T>
+					| CombinedLocalEvaluatorType<T, Record<string, PassFailCriteriaType>>
+				)[];
+
+				if (localEvaluators.length > 0) {
+					localEvaluationResults = await runLocalEvaluations(
+						localEvaluators,
+						row.data,
+						output as any,
+						contextToEvaluateForSimulation,
+					)
+				}
+
+				// 4. Build output for push
+				// Find all platform evaluators with variableMapping
+				const platformEvaluatorsWithMangler = evaluators.filter(
+					(e): e is PlatformEvaluator =>
+						typeof e !== "string" && !("evaluationFunction" in e) && "variableMapping" in e && typeof e.variableMapping === "object",
+				);
+
+				let evaluatorOutputOverrides: Record<string, Record<string, string | undefined>> | undefined;
+				evaluatorOutputOverrides = {};
+				for (const platformEval of platformEvaluatorsWithMangler) {
+					if (!platformEval.variableMapping) continue;
+					const mappingKeysList = Object.keys(platformEval.variableMapping);
+					if (mappingKeysList.length > 0) {
+						const evalConfig = platformEvaluatorsConfig.find((c) => c.name === platformEval.name);
+						if (!evalConfig) continue;
+
+						const mappingResult: Record<string, string | undefined> = {};
+						
+						// Resolve persona with priority: dataset column > simulation config
+						let datasetPersona: string | undefined;
+						for (const [key, value] of Object.entries(row.data)) {
+							if (key.toLowerCase() === "persona" && value != null) {
+								const personaStr = String(value).trim();
+								if (personaStr) {
+									datasetPersona = personaStr;
+									break;
+								}
+							}
+						}
+						
+						let simconfigPersona: string | undefined;
+						if (config.simulationConfig?.persona && !datasetPersona) {
+							if (typeof config.simulationConfig.persona === "string") {
+								simconfigPersona = config.simulationConfig.persona;
+							} else {
+								const val = row.data[config.simulationConfig.persona.payload];
+								simconfigPersona = val != null ? String(val).trim() || undefined : undefined;
+							}
+						}
+						
+						const persona = datasetPersona ?? simconfigPersona ?? "";
+
+						const runObj = {
+							input,
+							output: output.data,
+							retrieval: contextToEvaluateForSimulation,
+							toolCalls: [],
+							scenario,
+							persona,
+							messages: output.messages,
+							...output,
+						};
+
+						for (const key of mappingKeysList) {
+							const mappingFn = platformEval.variableMapping[key];
+							if (!mappingFn) continue;
+							try {
+								const version = workflow
+									? {
+											id: workflow.id,
+											type: "workflow" as const,
+										}
+									: promptVersion
+										? {
+												id: promptVersion.id,
+												type: "prompt" as const,
+											}
+										: undefined;
+
+								mappingResult[key] = mappingFn(runObj, row.data, version);
+							} catch (e) {
+								logger.error(`Error in variable mapping for key "${key}": ${e instanceof Error ? e.message : String(e)}`);
+							}
+						}
+						evaluatorOutputOverrides[evalConfig.id] = mappingResult;
+					}
+				}
+
+				// Simulation: cost/usage in simulationMeta, no runConfig
+				try {
+					await APITestRunService.pushTestRunEntry({
+						testRun: { ...testRun, datasetId, datasetEntryId: row.id },
+						entry: {
+							input,
+							output: output.data,
+							meta: {
+								sdkVariables:
+									evaluatorOutputOverrides && Object.keys(evaluatorOutputOverrides).length > 0
+										? Object.entries(evaluatorOutputOverrides).reduce(
+												(acc, [id, val]) => {
+													acc[id] = {
+														type: VariableType.JSON,
+														payload: JSON.stringify(val),
+													};
+													return acc;
+												},
+												{} as Record<string, Variable>,
+											)
+										: undefined,
+							},
+							expectedOutput,
+							contextToEvaluate: contextToEvaluateForSimulation,
+							scenario,
+							expectedSteps,
+							dataEntry: row.data,
+							localEvaluationResults: localEvaluationResults
+							? localEvaluationResults.map((result) => ({
+								...result,
+								id: localEvaluatorNameToIdAndPassFailCriteriaMap.get(result.name)!.id,
+							}))
+							: undefined,
+							simulationMeta: output.simulationMeta,
+						},
+						localSimulation: true,
+					});
+				} catch (pushError) {
+					const testRunEntryId = output?.simulationMeta?.testRunEntryId;
+					if (testRunEntryId) {
+						try {
+							await APITestRunService.updateSimulationStatus(testRunEntryId, "FAILED");
+						} catch (cleanupError) {
+							const msg = `Failed to mark simulation as failed after push error (testRunEntryId: ${testRunEntryId}): ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
+							"error" in logger && typeof logger.error === "function" ? logger.error(msg) : logger.info(msg);
+						}
+					}
+					throw pushError;
+				}
+
+				// 5. log the test run entry with local evaluation results
+				logger.processed(`Ran test run entry ${index + 1}`, {
+					datasetEntry: row.data as Data<T>,
+					output,
+					evaluationResults: localEvaluationResults,
+				});
+
+				return;
+			} // Make sure if its local workflow or remote workflow
+			else if (outputFunction || evaluators.filter((e) => typeof e !== "string").length > 0) {
 				let outputFunctionToExecute: (data: Data<T>) => YieldedOutput | Promise<YieldedOutput>;
 				if (outputFunction) {
 					outputFunctionToExecute = outputFunction;
-				} else {
+				}
+				else {
 					// Check if we need to use simulation endpoints (simulationConfig + local evaluators)
 					const hasLocalEvaluators =
 						evaluators.filter((e) => typeof e !== "string" && "evaluationFunction" in e).length > 0;
@@ -321,25 +527,44 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 					const mappingKeysList = Object.keys(platformEval.variableMapping);
 					if (mappingKeysList.length > 0) {
 						const evalConfig = platformEvaluatorsConfig.find((c) => c.name === platformEval.name);
-						if (!evalConfig) continue;
+					if (!evalConfig) continue;
 
-						const mappingResult: Record<string, string | undefined> = {};
-						const persona = config.simulationConfig?.persona
-							? typeof config.simulationConfig.persona === "string"
-								? config.simulationConfig.persona
-								: (row.data[config.simulationConfig.persona.payload] ?? "")
-							: "";
+					const mappingResult: Record<string, string | undefined> = {};
+					
+					// Resolve persona with priority: dataset column > simulation config
+					let datasetPersona: string | undefined;
+					for (const [key, value] of Object.entries(row.data)) {
+						if (key.toLowerCase() === "persona" && value != null) {
+							const personaStr = String(value).trim();
+							if (personaStr) {
+								datasetPersona = personaStr;
+								break;
+							}
+						}
+					}
+					
+					let simconfigPersona: string | undefined;
+					if (config.simulationConfig?.persona) {
+						if (typeof config.simulationConfig.persona === "string") {
+							simconfigPersona = config.simulationConfig.persona;
+						} else {
+							const val = row.data[config.simulationConfig.persona.payload];
+							simconfigPersona = val != null ? String(val).trim() || undefined : undefined;
+						}
+					}
+					
+					const persona = datasetPersona ?? simconfigPersona ?? "";
 
-						const runObj = {
-							input,
-							output: output.data,
-							retrieval: contextToEvaluate,
-							toolCalls: [],
-							scenario,
-							persona,
-							messages: output.messages,
-							...output,
-						};
+					const runObj = {
+						input,
+						output: output.data,
+						retrieval: contextToEvaluate,
+						toolCalls: [],
+						scenario,
+						persona,
+						messages: output.messages,
+						...output,
+					};
 
 						for (const key of mappingKeysList) {
 							const mappingFn = platformEval.variableMapping[key];
@@ -371,57 +596,70 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 					}
 				}
 
-				await APITestRunService.pushTestRunEntry({
-					testRun: { ...testRun, datasetId, datasetEntryId: row.id },
-					runConfig: output.meta
-						? {
-								cost: output.meta.cost,
-								usage: output.meta.usage
-									? "completionTokens" in output.meta.usage
-										? {
-												completion_tokens: output.meta.usage.completionTokens,
-												prompt_tokens: output.meta.usage.promptTokens,
-												total_tokens: output.meta.usage.totalTokens,
-												latency: output.meta.usage.latency,
-											}
-										: {
-												latency: output.meta.usage.latency,
-											}
-									: undefined,
-							}
-						: undefined,
-					entry: {
-						input,
-						output: output.data,
-						meta: {
-							sdkVariables:
-								evaluatorOutputOverrides && Object.keys(evaluatorOutputOverrides).length > 0
-									? Object.entries(evaluatorOutputOverrides).reduce(
-											(acc, [id, val]) => {
-												acc[id] = {
-													type: VariableType.JSON,
-													payload: JSON.stringify(val),
-												};
-												return acc;
-											},
-											{} as Record<string, Variable>,
-										)
-									: undefined,
-						},
-						expectedOutput,
-						contextToEvaluate,
-						scenario,
-						expectedSteps,
-						dataEntry: row.data,
-						localEvaluationResults: localEvaluationResults
-							? localEvaluationResults.map((result) => ({
-									...result,
-									id: localEvaluatorNameToIdAndPassFailCriteriaMap.get(result.name)!.id,
-								}))
+				try {
+					await APITestRunService.pushTestRunEntry({
+						testRun: { ...testRun, datasetId, datasetEntryId: row.id },
+						runConfig: output.meta
+							? {
+									cost: output.meta.cost,
+									usage: output.meta.usage
+										? "completionTokens" in output.meta.usage
+											? {
+													completion_tokens: output.meta.usage.completionTokens,
+													prompt_tokens: output.meta.usage.promptTokens,
+													total_tokens: output.meta.usage.totalTokens,
+													latency: output.meta.usage.latency,
+												}
+											: {
+													latency: output.meta.usage.latency,
+												}
+										: undefined,
+								}
 							: undefined,
-						simulationMeta: output.simulationMeta,
-					},
-				});
+						entry: {
+							input,
+							output: output.data,
+							meta: {
+								sdkVariables:
+									evaluatorOutputOverrides && Object.keys(evaluatorOutputOverrides).length > 0
+										? Object.entries(evaluatorOutputOverrides).reduce(
+												(acc, [id, val]) => {
+													acc[id] = {
+														type: VariableType.JSON,
+														payload: JSON.stringify(val),
+													};
+													return acc;
+												},
+												{} as Record<string, Variable>,
+											)
+										: undefined,
+							},
+							expectedOutput,
+							contextToEvaluate,
+							scenario,
+							expectedSteps,
+							dataEntry: row.data,
+							localEvaluationResults: localEvaluationResults
+								? localEvaluationResults.map((result) => ({
+										...result,
+										id: localEvaluatorNameToIdAndPassFailCriteriaMap.get(result.name)!.id,
+									}))
+								: undefined,
+							simulationMeta: output.simulationMeta,
+						},
+					});
+				} catch (pushError) {
+					const testRunEntryId = output?.simulationMeta?.testRunEntryId;
+					if (testRunEntryId) {
+						try {
+							await APITestRunService.updateSimulationStatus(testRunEntryId, "FAILED");
+						} catch (cleanupError) {
+							const msg = `Failed to mark simulation as failed after push error (testRunEntryId: ${testRunEntryId}): ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
+							"error" in logger && typeof logger.error === "function" ? logger.error(msg) : logger.info(msg);
+						}
+					}
+					throw pushError;
+				}
 
 				// 5. log the test run entry with local evaluation results
 				logger.processed(`Ran test run entry ${index + 1}`, {

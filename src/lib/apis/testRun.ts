@@ -19,6 +19,8 @@ import {
 	MaximAPITestRunEntryPushPayload,
 	MaximAPITestRunResultResponse,
 	MaximAPITestRunStatusResponse,
+	MaximAPITestRunSimulationLocalExecutionPayload,
+	MaximAPITestRunSimulationLocalExecutionPostResponse,
 	TestRunConfig,
 	TestRunResult,
 } from "../models/testRun";
@@ -88,6 +90,32 @@ export class MaximTestRunAPI extends MaximAPI {
 				},
 				body: JSON.stringify({
 					testRunId,
+				}),
+			})
+				.then((response) => {
+					if (response.error) {
+						reject(response.error);
+					} else {
+						resolve();
+					}
+				})
+				.catch((error) => {
+					reject(error);
+				});
+		});
+	}
+
+	public async updateSimulationStatus(testRunEntryId: string, status: "FAILED"): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			this.fetch<MaximAPIResponse>(`/api/sdk/v2/test-run/simulation/update-status`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json",
+				},
+				body: JSON.stringify({
+					testRunEntryId,
+					status,
 				}),
 			})
 				.then((response) => {
@@ -197,7 +225,7 @@ export class MaximTestRunAPI extends MaximAPI {
 			: (rawDataEntry as Record<string, Variable | undefined>);
 	}
 
-	public async pushTestRunEntry({ testRun, runConfig, entry }: MaximAPITestRunEntryPushPayload): Promise<void> {
+	public async pushTestRunEntry({ testRun, runConfig, entry, localSimulation }: MaximAPITestRunEntryPushPayload): Promise<void> {
 		const convertedEntry = entry.dataEntry
 			? {
 					...entry,
@@ -216,6 +244,7 @@ export class MaximTestRunAPI extends MaximAPI {
 					testRun,
 					runConfig,
 					entry: convertedEntry,
+					...(localSimulation !== undefined && { localSimulation }),
 				}),
 			})
 				.then((response) => {
@@ -542,6 +571,140 @@ export class MaximTestRunAPI extends MaximAPI {
 					headers: {
 						Accept: "application/json",
 					},
+				},
+			)
+				.then((response) => {
+					if ("error" in response) {
+						reject(response.error);
+					} else {
+						resolve(response.data);
+					}
+				})
+				.catch((error) => {
+					reject(error);
+				});
+		});
+	}
+
+	public async executeSimulationLocalPromptExecution({
+		testRunId,
+		workspaceId,
+		promptVersionId,
+		datasetEntryId,
+		entry,
+		simulationConfig,
+		conversationHistory,
+		testRunEntryId,
+	}: MaximAPITestRunSimulationLocalExecutionPayload): Promise<
+		ExtractAPIDataType<MaximAPITestRunSimulationLocalExecutionPostResponse>
+	> {
+		const resolvedPersona = simulationConfig?.persona
+			? typeof simulationConfig.persona === "string"
+				? simulationConfig.persona
+				: String(
+						(entry?.dataEntry as Record<string, unknown>)?.[simulationConfig.persona.payload] ?? "",
+					)
+			: undefined;
+
+		const convertedEntry =
+			entry?.dataEntry != null
+				? {
+						...entry,
+						dataEntry: this.normalizeDataEntryToVariables(
+							entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>,
+						),
+						...(resolvedPersona !== undefined && { persona: resolvedPersona }),
+					}
+				: entry
+					? { ...entry, ...(resolvedPersona !== undefined && { persona: resolvedPersona }) }
+					: entry;
+
+		return new Promise((resolve, reject) => {
+			this.fetch<MaximAPITestRunSimulationLocalExecutionPostResponse>(
+				`/api/sdk/v2/test-run/simulation/prompt/local-execution`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Accept: "application/json",
+					},
+					body: JSON.stringify({
+						testRunId,
+						workspaceId,
+						promptVersionId,
+						datasetEntryId,
+						entry: convertedEntry,
+						simulationConfig,
+						conversationHistory,
+						testRunEntryId,
+					}),
+				},
+			)
+				.then((response) => {
+					if ("error" in response) {
+						reject(response.error);
+					} else {
+						resolve(response.data);
+					}
+				})
+				.catch((error) => {
+					reject(error);
+				});
+		});
+	}
+
+	public async executeSimulationLocalWorkflowExecution({
+		testRunId,
+		workspaceId,
+		workflowId,
+		datasetEntryId,
+		entry,
+		simulationConfig,
+		conversationHistory,
+		testRunEntryId,
+	}: MaximAPITestRunSimulationLocalExecutionPayload): Promise<
+		ExtractAPIDataType<MaximAPITestRunSimulationLocalExecutionPostResponse>
+	> {
+		const resolvedPersona = simulationConfig?.persona
+			? typeof simulationConfig.persona === "string"
+				? simulationConfig.persona
+				: String(
+						(entry?.dataEntry as Record<string, unknown>)?.[simulationConfig.persona.payload] ?? "",
+					)
+			: undefined;
+
+		const convertedEntry =
+			entry?.dataEntry != null
+				? {
+						...entry,
+						dataEntry: this.normalizeDataEntryToVariables(
+							entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>,
+						),
+						...(resolvedPersona !== undefined && { persona: resolvedPersona }),
+					}
+				: entry
+					? { ...entry, ...(resolvedPersona !== undefined && { persona: resolvedPersona }) }
+					: entry;
+
+		return new Promise((resolve, reject) => {
+			this.fetch<MaximAPITestRunSimulationLocalExecutionPostResponse>(
+				`/api/sdk/v2/test-run/simulation/workflow/local-execution`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Accept: "application/json",
+					},
+					body: JSON.stringify({
+						testRunId,
+						workspaceId,
+						workflowId,
+						datasetEntryId,
+						entry: convertedEntry,
+						simulationConfig,
+						conversationHistory,
+						testRunEntryId,
+					}),
 				},
 			)
 				.then((response) => {

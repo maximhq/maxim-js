@@ -149,15 +149,47 @@ export interface TestRunLogger<T extends DataStructure | undefined = undefined> 
  */
 
 /**
+ * A single turn in the simulation conversation history.
+ * Request/response shapes depend on workflow or prompt config.
+ * - Workflow: request_fields and response_fields from workflow config
+ * - Prompt: request = { input }, response = { output, tool_calls? }
+ */
+export type SimulationConversationTurn = {
+	turn: number;
+	request: Record<string, unknown>;
+	response: Record<string, unknown>;
+	reasoning?: string;
+};
+
+/**
  * Metadata returned from simulation endpoints.
  * Contains the full simulation conversation and trace data.
  */
 export type SimulationMeta = {
+	testRunEntryId?: string;
 	sessionId?: string;
 	simulationId?: string;
 	messages: unknown[];
+	/** Last turn (user input + assistant response) for push to append to session messages */
+	lastTurn?: {
+		turn: number;
+		request: Record<string, unknown>;
+		response: Record<string, unknown>;
+	};
 	trace?: unknown[];
 	turns?: unknown[]; // For workflow simulations
+	stopReason?: string; // Reason for simulation stop from backend (e.g. from /local-execution)
+	usage?: {
+		promptTokens: number;
+		completionTokens: number;
+		totalTokens: number;
+		latency?: number;
+	};
+	cost?: {
+		input: number;
+		output: number;
+		total: number;
+	};
 };
 
 export type YieldedOutput = {
@@ -166,6 +198,10 @@ export type YieldedOutput = {
 	retrievedContextToEvaluate?: string | string[];
 	messages?: unknown[];
 	simulationMeta?: SimulationMeta;
+	/** For simulation workflow: full response shape keyed by response_fields. If omitted, { output: data } is used. */
+	simulationResponse?: Record<string, unknown>;
+	/** For simulation prompt: tool calls if assistant used tools. */
+	toolCalls?: unknown[];
 	meta?: {
 		usage?:
 			| {
@@ -296,7 +332,14 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 	data?: DataValue<T>;
 	evaluators: (LocalEvaluatorType<T> | CombinedLocalEvaluatorType<T, Record<string, PassFailCriteriaType>> | string | PlatformEvaluator)[];
 	humanEvaluationConfig?: HumanEvaluationConfig;
-	outputFunction?: (data: Data<T>) => YieldedOutput | Promise<YieldedOutput>;
+	outputFunction?: (
+		data: Data<T>,
+		simulationContext?: {
+			conversationHistory: SimulationConversationTurn[];
+			currentUserInput: Record<string, unknown>;
+			turnNumber: number;
+		},
+	) => YieldedOutput | Promise<YieldedOutput>;
 	promptVersion?: {
 		id: string;
 		contextToEvaluate?: string;
@@ -322,6 +365,11 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 		};
 		responseFields?: string[];
 		environmentId?: string;
+		stopTrigger?: {
+			field: string;
+			value: string | boolean | number;
+		};
+		additionalInstructions?: string;
 	};
 	logger?: TestRunLogger<T>;
 	concurrency?: number;
@@ -713,6 +761,7 @@ export type MaximAPITestRunEntryPushPayload<T extends DataStructure | undefined 
 		};
 	};
 	entry: MaximAPITestRunEntry;
+	localSimulation?: boolean;
 };
 
 export type MaximAPITestRunEntry = {
@@ -1022,6 +1071,55 @@ export type MaximAPITestRunEntryExecuteSimulationWorkflowResponse =
 					output: number;
 					total: number;
 				};
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+// Local-execution API types for simulation with yieldsOutput
+export type MaximAPITestRunSimulationLocalExecutionPayload = {
+	testRunId: string;
+	workspaceId: string;
+	promptVersionId?: string;
+	workflowId?: string;
+	datasetEntryId?: string;
+	entry?: {
+		input?: string | null;
+		scenario?: string | null;
+		expectedSteps?: string | null;
+		contextToEvaluate?: string | string[] | null;
+		dataEntry?: Record<string, string | string[] | null | undefined> | null;
+		persona?: string | null;
+	};
+	simulationConfig: TestRunConfig["simulationConfig"];
+	conversationHistory?: SimulationConversationTurn[];
+	testRunEntryId?: string;
+};
+
+export type MaximAPITestRunSimulationLocalExecutionPostResponse =
+	| {
+			data: {
+				testRunEntryId: string;
+				userInput: Record<string, unknown>; // User input keyed by request_fields (workflow) or { input } (prompt)
+				turnNumber: number;
+				isComplete: boolean;
+				stopReason?: string; // Reason for simulation stop from backend
+				usage?: {
+					promptTokens: number;
+					completionTokens: number;
+					totalTokens: number;
+					latency?: number;
+				};
+				cost?: {
+					input: number;
+					output: number;
+					total: number;
+				};
+				sessionId?: string;
+				simulationId?: string;
 			};
 	  }
 	| {
