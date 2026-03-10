@@ -1,10 +1,10 @@
 import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3StreamPart } from "ai-sdk-provider-v3";
 import { MaximLogger } from "../../logger";
-import { determineProvider, extractMaximMetadataFromOptions, extractModelParameters } from "./../utils";
+import { determineProvider, extractErrorInfo, extractMaximMetadataFromOptions, extractModelParameters } from "./../utils";
 import { Generation, Session, Trace } from "../../components";
 import { v4 as uuid } from "uuid";
 import { ChatCompletionMessage, CompletionRequest } from "src/lib/models/prompt";
-import { convertDoGenerateResultToChatCompletionResultV3, parsePromptMessagesV3, processStreamV3 } from "./utils";
+import { convertDoGenerateResultToChatCompletionResultV3, parsePromptMessagesV3, processStreamV3, processToolResultsFromPromptV3 } from "./utils";
 import { LanguageFirstTokenModel } from "../types";
 
 export class MaximAISDKWrapperV3 implements LanguageModelV3 {
@@ -191,15 +191,7 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 				}
 			}
 
-			if (promptMessages.length > 0) {
-				const toolCalls = promptMessages.filter((msg) => msg.role === "tool");
-				for (const toolCall of toolCalls) {
-					const tc = toolCall as unknown as CompletionRequest;
-					if (tc.tool_call_id && typeof tc.content === "string") {
-						this.logger.toolCallResult(tc.tool_call_id, tc.content);
-					}
-				}
-			}
+			processToolResultsFromPromptV3(options.prompt, this.logger);
 
 			// Calling the original doGenerate function
 			response = await this.model.doGenerate(options);
@@ -236,9 +228,7 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 			return response;
 		} catch (error) {
 			if (generation) {
-				generation.error({
-					message: (error as Error).message,
-				});
+				generation.error(extractErrorInfo(error));
 			}
 
 			// Log error details
@@ -278,6 +268,11 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 		const wrapperInstance = this;
 
 		try {
+			// Process tool results from prompt before streaming (same as doGenerate)
+			// so toolCallResult/toolCallError are logged even if doStream or reader.read throws.
+			// Must be inside try so any throw flows into catch/flush path.
+			processToolResultsFromPromptV3(options.prompt, this.logger);
+
 			// Calling the original doStream method
 			const startTime = performance.now();
 			const response = await this.model.doStream(options);
@@ -355,16 +350,6 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 									trace.addMetric("tokens_per_second", textChunks.length / ((endTime - startTime) / 1000));
 									if (generation) processStreamV3(chunks, span, trace, generation, modelId, maximMetadata);
 
-									if (promptMessages.length > 0) {
-										const toolCalls = promptMessages.filter((msg) => msg.role === "tool");
-										for (const toolCall of toolCalls) {
-											const tc = toolCall as unknown as CompletionRequest;
-											if (tc.tool_call_id && typeof tc.content === "string") {
-												wrapperInstance.logger.toolCallResult(tc.tool_call_id, tc.content);
-											}
-										}
-									}
-
 									// Handle trace ending after stream processing
 									// End trace if:
 									// 1. User explicitly provided traceId (they manage it) - but don't reset state
@@ -383,9 +368,7 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 								} catch (error) {
 									console.error("[MaximSDK] Processing failed:", error);
 									if (generation) {
-										generation.error({
-											message: (error as Error).message,
-										});
+										generation.error(extractErrorInfo(error));
 										generation.end();
 									}
 									// Flush logs even on error
@@ -409,9 +392,7 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 					} catch (error) {
 						controller.error(error);
 						if (generation) {
-							generation.error({
-								message: (error as Error).message,
-							});
+							generation.error(extractErrorInfo(error));
 							generation.end();
 						}
 						// Flush logs on stream error
@@ -427,9 +408,7 @@ export class MaximAISDKWrapperV3 implements LanguageModelV3 {
 			};
 		} catch (error) {
 			if (generation) {
-				generation.error({
-					message: (error as Error).message,
-				});
+				generation.error(extractErrorInfo(error));
 				generation.end();
 			}
 

@@ -4,7 +4,7 @@ import { v4 as uuid } from "uuid";
 import { determineProvider, extractMaximMetadataFromOptions, extractModelParameters } from "./../utils";
 import { Generation, Session, Trace } from "../../components";
 import { ChatCompletionMessage, CompletionRequest } from "src/lib/models/prompt";
-import { convertDoGenerateResultToChatCompletionResult, parsePromptMessages, processStream } from "./utils";
+import { convertDoGenerateResultToChatCompletionResult, parsePromptMessages, processStream, processToolResultsFromPromptV1 } from "./utils";
 import { LanguageFirstTokenModel } from "../types";
 
 /**
@@ -174,15 +174,7 @@ export class MaximAISDKWrapper implements LanguageModelV1 {
 				tags: maximMetadata?.generationTags,
 			});
 
-			if (promptMessages.length > 0) {
-				const toolCalls = promptMessages.filter((msg) => msg.role === "tool");
-				for (const toolCall of toolCalls) {
-					const tc = toolCall as unknown as CompletionRequest;
-					if (tc.tool_call_id && typeof tc.content === "string") {
-						this.logger.toolCallResult(tc.tool_call_id, tc.content);
-					}
-				}
-			}
+			processToolResultsFromPromptV1(options.prompt, this.logger);
 
 			// Calling the original doGenerate function
 			response = await this.model.doGenerate(options);
@@ -257,6 +249,11 @@ export class MaximAISDKWrapper implements LanguageModelV1 {
 		const wrapperInstance = this;
 
 		try {
+			// Process tool results from prompt before streaming (same as doGenerate)
+			// so toolCallResult/toolCallError are logged even if doStream or reader.read throws.
+			// Must be inside try so any throw flows into catch/flush path.
+			processToolResultsFromPromptV1(options.prompt, this.logger);
+
 			// Calling the original doStream method
 			const startTime = performance.now();
 			const response = await this.model.doStream(options);
@@ -306,16 +303,6 @@ export class MaximAISDKWrapper implements LanguageModelV1 {
 									const textChunks = chunks.filter((chunk) => chunk.type === "text-delta" || chunk.type === "tool-call-delta");
 									trace.addMetric("tokens_per_second", textChunks.length / ((endTime - startTime) / 1000));
 									if (generation) processStream(chunks, span, trace, generation, modelId, maximMetadata);
-
-									if (promptMessages.length > 0) {
-										const toolCalls = promptMessages.filter((msg) => msg.role === "tool");
-										for (const toolCall of toolCalls) {
-											const tc = toolCall as unknown as CompletionRequest;
-											if (tc.tool_call_id && typeof tc.content === "string") {
-												wrapperInstance.logger.toolCallResult(tc.tool_call_id, tc.content);
-											}
-										}
-									}
 
 									// Handle trace ending after stream processing
 									// End trace if:

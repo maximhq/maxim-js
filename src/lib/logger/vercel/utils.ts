@@ -1,7 +1,7 @@
 import { LanguageModelV1CallOptions, LanguageModelV1ProviderMetadata } from "ai-sdk-provider-v1";
-import { v4 as uuid } from "uuid";
 import { LanguageModelV2CallOptions, LanguageModelV2ToolResultOutput, SharedV2ProviderOptions } from "ai-sdk-provider-v2";
 import { LanguageModelV3CallOptions, LanguageModelV3ToolResultOutput, SharedV3ProviderOptions } from "ai-sdk-provider-v3";
+import { v4 as uuid } from "uuid";
 import { MaximVercelProviderMetadata } from "./types";
 
 /**
@@ -81,6 +81,48 @@ export function extractMaximMetadataFromOptions(
 		...maximMetadata,
 		spanId: maximMetadata.spanId ?? uuid(),
 	} as MaximVercelProviderMetadata;
+}
+
+/**
+ * Extracts structured error information from any thrown value.
+ *
+ * Handles standard Error objects, API error objects (with code/type fields),
+ * plain strings, and unknown values — so generation.error() always receives
+ * a meaningful message instead of an empty object.
+ *
+ * @param error - The caught value from a catch block.
+ * @returns An object with message, and optionally code and type.
+ */
+export function extractErrorInfo(error: unknown): { message: string; code?: string; type?: string } {
+	if (error instanceof Error) {
+		return {
+			message: error.message,
+			type: error.name !== "Error" ? error.name : undefined,
+			code: (error as unknown as Record<string, unknown>)["code"] as string | undefined,
+		};
+	}
+	if (typeof error === "string") {
+		return { message: error };
+	}
+	if (typeof error === "object" && error !== null) {
+		const err = error as Record<string, unknown>;
+		let message: string;
+		if (typeof err["message"] === "string") {
+			message = err["message"];
+		} else {
+			try {
+				message = JSON.stringify(error);
+			} catch {
+				message = err["message"] !== undefined ? String(err["message"]) : String(error);
+			}
+		}
+		return {
+			message,
+			code: typeof err["code"] === "string" ? err["code"] : undefined,
+			type: typeof err["type"] === "string" ? err["type"] : undefined,
+		};
+	}
+	return { message: String(error) };
 }
 
 export function parseToolResultOutput(content: LanguageModelV2ToolResultOutput | LanguageModelV3ToolResultOutput): string {
