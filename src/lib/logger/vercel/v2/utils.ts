@@ -9,7 +9,9 @@ import {
 	Span,
 	Trace,
 } from "index";
-import { parseToolResultOutput } from "../utils";
+import type { MaximLogger } from "../../logger";
+import type { ToolCallError } from "../../components/toolCall";
+import { extractErrorInfo, parseToolResultOutput } from "../utils";
 
 import { DoGenerateV2Result, MaximVercelProviderMetadata } from "../types";
 import { v4 as uuid } from "uuid";
@@ -99,6 +101,35 @@ export function parsePromptMessagesV2(prompt: LanguageModelV2Prompt): Array<Comp
 		.flat();
 
 	return promptMessages;
+}
+
+/**
+ * Processes tool results from the raw prompt and logs them to Maxim.
+ * Calls toolCallError for error-type results (error-text, error-json) and toolCallResult for successes.
+ *
+ * @param prompt - The raw LanguageModelV2 prompt containing tool results
+ * @param logger - The MaximLogger instance for logging tool results/errors
+ */
+export function processToolResultsFromPromptV2(prompt: LanguageModelV2Prompt, logger: MaximLogger): void {
+	for (const promptMsg of prompt) {
+		if (promptMsg.role !== "tool") continue;
+
+		for (const part of promptMsg.content) {
+			if (part.type !== "tool-result") continue;
+
+			const toolCallId = (part as { toolCallId: string }).toolCallId;
+			const output = (part as { output: { type: string; value: unknown } }).output;
+			const isError = output.type === "error-text" || output.type === "error-json";
+
+			if (isError) {
+				const errorInfo = extractErrorInfo(output.value) as ToolCallError;
+				logger.toolCallError(toolCallId, errorInfo);
+			} else {
+				const content = parseToolResultOutput(output as Parameters<typeof parseToolResultOutput>[0]);
+				logger.toolCallResult(toolCallId, content);
+			}
+		}
+	}
 }
 
 /**

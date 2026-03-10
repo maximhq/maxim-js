@@ -1,11 +1,12 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
-import { generateObject, generateText, streamObject, streamText, tool } from "ai";
+import { generateObject, generateText, stepCountIs, streamObject, streamText, tool } from "ai";
 import { config } from "dotenv";
 import { v4 as uuid } from "uuid";
 import { z } from "zod/v3";
 import { Maxim } from "../../../../../index";
 import { MaximVercelProviderMetadata, wrapMaximAISDKModel } from "../../../../../vercel-ai-sdk";
+import { processToolResultsFromPromptV1 } from "./utils";
 
 config();
 
@@ -599,6 +600,55 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 			}
 		}, 20000);
 
+		it("should capture tool execution error when using real model", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+			if (!logger) {
+				throw new Error("Logger is not available");
+			}
+
+			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
+
+			const failingToolError = new Error("Tool execution failed: external service unavailable");
+
+			try {
+				await generateText({
+					model: model,
+					tools: {
+						calculator: tool({
+							description: "Perform basic arithmetic operations",
+							inputSchema: z.object({
+								operation: z.enum(["add", "subtract", "multiply", "divide"]),
+								a: z.number().describe("First number"),
+								b: z.number().describe("Second number"),
+							}),
+							execute: async (): Promise<{ result: number }> => {
+								throw failingToolError;
+							},
+						}),
+					},
+					prompt: "Calculate 15 multiplied by 8.",
+					providerOptions: {
+						maxim: {
+							traceName: "V1 Tool Execution Error Test",
+							generationName: "Calculator Error",
+							generationTags: {
+								tool_usage: "calculator",
+								specification: "v1",
+								test_type: "tool_execution_error",
+							},
+						} as MaximVercelProviderMetadata,
+					},
+					stopWhen: stepCountIs(5),
+				});
+			} catch (error) {
+				expect(error).toBe(failingToolError);
+				expect((error as Error).message).toBe("Tool execution failed: external service unavailable");
+			}
+		}, 20000);
+
 		// it("should get a web searcher with openai", async () => {
 		// 	if (!repoId || !openAIKey) {
 		// 		throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
@@ -707,5 +757,76 @@ describe("Comprehensive MaximVercelTracer Tests", () => {
 				console.error(error);
 			}
 		}, 20000);
+	});
+});
+
+describe("processToolResultsFromPromptV1", () => {
+	it("calls toolCallError for error-text tool results when output format is used", () => {
+		const toolCallError = jest.fn();
+		const toolCallResult = jest.fn();
+		const logger = { toolCallError, toolCallResult } as never;
+
+		const prompt = [
+			{
+				role: "tool" as const,
+				content: [
+					{
+						toolCallId: "call_123",
+						output: { type: "error-text" as const, value: "Tool execution failed" },
+					},
+				],
+			},
+		];
+
+		processToolResultsFromPromptV1(prompt as never, logger);
+
+		expect(toolCallError).toHaveBeenCalledWith("call_123", { message: "Tool execution failed" });
+		expect(toolCallResult).not.toHaveBeenCalled();
+	});
+
+	it("calls toolCallResult for success tool results when output format is used", () => {
+		const toolCallError = jest.fn();
+		const toolCallResult = jest.fn();
+		const logger = { toolCallError, toolCallResult } as never;
+
+		const prompt = [
+			{
+				role: "tool" as const,
+				content: [
+					{
+						toolCallId: "call_456",
+						output: { type: "text" as const, value: "120" },
+					},
+				],
+			},
+		];
+
+		processToolResultsFromPromptV1(prompt as never, logger);
+
+		expect(toolCallResult).toHaveBeenCalledWith("call_456", "120");
+		expect(toolCallError).not.toHaveBeenCalled();
+	});
+
+	it("calls toolCallResult for V1-style result-only format", () => {
+		const toolCallError = jest.fn();
+		const toolCallResult = jest.fn();
+		const logger = { toolCallError, toolCallResult } as never;
+
+		const prompt = [
+			{
+				role: "tool" as const,
+				content: [
+					{
+						toolCallId: "call_789",
+						result: { result: 120 },
+					},
+				],
+			},
+		];
+
+		processToolResultsFromPromptV1(prompt as never, logger);
+
+		expect(toolCallResult).toHaveBeenCalledWith("call_789", '{"result":120}');
+		expect(toolCallError).not.toHaveBeenCalled();
 	});
 });

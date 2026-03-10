@@ -6,6 +6,7 @@ import { v4 as uuid } from "uuid";
 import { z } from "zod/v3";
 import { Maxim } from "../../../../../index";
 import { MaximVercelProviderMetadata, wrapMaximAISDKModel } from "../../../../../vercel-ai-sdk";
+import { processToolResultsFromPromptV2 } from "./utils";
 
 config();
 
@@ -285,6 +286,55 @@ describe("AI SDK V2 Specification Tests", () => {
 			} catch (error) {
 				console.error("Error in V2 tool call:", error);
 				throw error;
+			}
+		}, 20000);
+
+		it("should capture tool execution error when using real model", async () => {
+			if (!repoId || !openAIKey) {
+				throw new Error("MAXIM_LOG_REPO_ID and OPENAI_API_KEY environment variables are required");
+			}
+			const logger = await maxim.logger({ id: repoId });
+			if (!logger) {
+				throw new Error("Logger is not available");
+			}
+
+			const model = wrapMaximAISDKModel(openai.chat("gpt-4o-mini"), logger);
+
+			const failingToolError = new Error("Tool execution failed: external service unavailable");
+
+			try {
+				await generateText({
+					model: model,
+					tools: {
+						calculator: tool({
+							description: "Perform basic arithmetic operations",
+							inputSchema: z.object({
+								operation: z.enum(["add", "subtract", "multiply", "divide"]),
+								a: z.number().describe("First number"),
+								b: z.number().describe("Second number"),
+							}),
+							execute: async (): Promise<{ result: number }> => {
+								throw failingToolError;
+							},
+						}),
+					},
+					prompt: "Calculate 15 multiplied by 8.",
+					providerOptions: {
+						maxim: {
+							traceName: "V2 Tool Execution Error Test",
+							generationName: "Calculator Error",
+							generationTags: {
+								tool_usage: "calculator",
+								specification: "v2",
+								test_type: "tool_execution_error",
+							},
+						} as MaximVercelProviderMetadata,
+					},
+					stopWhen: stepCountIs(5),
+				});
+			} catch (error) {
+				expect(error).toBe(failingToolError);
+				expect((error as Error).message).toBe("Tool execution failed: external service unavailable");
 			}
 		}, 20000);
 
@@ -1212,5 +1262,57 @@ describe("AI SDK V2 Specification Tests", () => {
 				throw error;
 			}
 		}, 20000);
+	});
+});
+
+describe("processToolResultsFromPromptV2", () => {
+	it("calls toolCallError for error-text tool results", () => {
+		const toolCallError = jest.fn();
+		const toolCallResult = jest.fn();
+		const logger = { toolCallError, toolCallResult } as never;
+
+		const prompt = [
+			{
+				role: "tool" as const,
+				content: [
+					{
+						type: "tool-result" as const,
+						toolCallId: "call_123",
+						toolName: "calculator",
+						output: { type: "error-text" as const, value: "Tool execution failed" },
+					},
+				],
+			},
+		];
+
+		processToolResultsFromPromptV2(prompt as never, logger);
+
+		expect(toolCallError).toHaveBeenCalledWith("call_123", { message: "Tool execution failed" });
+		expect(toolCallResult).not.toHaveBeenCalled();
+	});
+
+	it("calls toolCallResult for success tool results", () => {
+		const toolCallError = jest.fn();
+		const toolCallResult = jest.fn();
+		const logger = { toolCallError, toolCallResult } as never;
+
+		const prompt = [
+			{
+				role: "tool" as const,
+				content: [
+					{
+						type: "tool-result" as const,
+						toolCallId: "call_456",
+						toolName: "calculator",
+						output: { type: "text" as const, value: "120" },
+					},
+				],
+			},
+		];
+
+		processToolResultsFromPromptV2(prompt as never, logger);
+
+		expect(toolCallResult).toHaveBeenCalledWith("call_456", "120");
+		expect(toolCallError).not.toHaveBeenCalled();
 	});
 });

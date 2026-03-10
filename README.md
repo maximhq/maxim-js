@@ -524,9 +524,14 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.30.0
+
+- fix: Fixed tool call errors showing up for Vercel AI SDK
+
 ### v6.29.0
 
 - feat: Added support to run `local-Evaluators` with simulations in test runs.
+
 ### v6.28.0
 
 - fix: Check for log repository does not block logger creation.

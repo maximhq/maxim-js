@@ -1,8 +1,48 @@
 import { LanguageModelV1FunctionToolCall, LanguageModelV1Prompt, LanguageModelV1StreamPart } from "ai-sdk-provider-v1";
 import { ChatCompletionMessage, ChatCompletionResult, CompletionRequest, CompletionRequestContent, Generation, Span, Trace } from "index";
+import type { MaximLogger } from "../../logger";
+import type { ToolCallError } from "../../components/toolCall";
+import { extractErrorInfo, parseToolResultOutput } from "../utils";
 import { DoGenerateResultLike } from "../types";
 import { v4 as uuid } from "uuid";
 import { MaximVercelProviderMetadata } from "../types";
+
+/** Canonical shape for a normalized tool part (supports both output and result formats). */
+export interface NormalizedToolPart {
+	toolCallId: string;
+	isError: boolean;
+	content: string;
+	errorInfo?: ToolCallError;
+}
+
+/**
+ * Normalizes a V1 prompt tool part (which may have output or result) into a canonical shape.
+ * Used by both logging (processToolResultsFromPromptV1) and transcript generation (parsePromptMessages).
+ */
+export function normalizeToolPart(
+	part: { toolCallId: string; output?: { type: string; value: unknown }; result?: unknown },
+): NormalizedToolPart {
+	const toolCallId = part.toolCallId;
+	const output = part.output;
+	const result = part.result;
+
+	if (output && typeof output === "object" && "type" in output) {
+		const isError = output.type === "error-text" || output.type === "error-json";
+		if (isError) {
+			const errorInfo = extractErrorInfo(output.value) as ToolCallError;
+			return {
+				toolCallId,
+				isError: true,
+				content: errorInfo.message,
+				errorInfo,
+			};
+		}
+		const content = parseToolResultOutput(output as Parameters<typeof parseToolResultOutput>[0]);
+		return { toolCallId, isError: false, content };
+	}
+	const content = typeof result === "string" ? result : JSON.stringify(result ?? "");
+	return { toolCallId, isError: false, content };
+}
 
 /**
  * Converts a LanguageModelV1Prompt into an array of CompletionRequest or ChatCompletionMessage objects.
@@ -69,17 +109,43 @@ export function parsePromptMessages(prompt: LanguageModelV1Prompt): Array<Comple
 					] as Array<CompletionRequest | ChatCompletionMessage>;
 				}
 				case "tool": {
-					return promptMsg.content.map((part) => ({
-						role: "tool",
-						tool_call_id: part.toolCallId,
-						content: JSON.stringify(part.result),
-					})) as Array<CompletionRequest | ChatCompletionMessage>;
+					return promptMsg.content.map((part) => {
+						const normalized = normalizeToolPart(part as Parameters<typeof normalizeToolPart>[0]);
+						return {
+							role: "tool",
+							tool_call_id: normalized.toolCallId,
+							content: normalized.content,
+						};
+					}) as Array<CompletionRequest | ChatCompletionMessage>;
 				}
 			}
 		})
 		.flat();
 
 	return promptMessages;
+}
+
+/**
+ * Processes tool results from the raw prompt and logs them to Maxim.
+ * Calls toolCallError for error-type results (error-text, error-json) and toolCallResult for successes.
+ * Supports both output-based format (V2/V3 style) and result-based format (V1 style).
+ *
+ * @param prompt - The raw LanguageModelV1 prompt containing tool results
+ * @param logger - The MaximLogger instance for logging tool results/errors
+ */
+export function processToolResultsFromPromptV1(prompt: LanguageModelV1Prompt, logger: MaximLogger): void {
+	for (const promptMsg of prompt) {
+		if (promptMsg.role !== "tool") continue;
+
+		for (const part of promptMsg.content) {
+			const normalized = normalizeToolPart(part as Parameters<typeof normalizeToolPart>[0]);
+			if (normalized.isError && normalized.errorInfo) {
+				logger.toolCallError(normalized.toolCallId, normalized.errorInfo);
+			} else {
+				logger.toolCallResult(normalized.toolCallId, normalized.content);
+			}
+		}
+	}
 }
 
 /**

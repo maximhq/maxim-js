@@ -20,15 +20,15 @@ async function main() {
   });
 
   const prompt = await maxim.getPrompt(
-    "cm8fkfacp000510vu14u0895k",
-    new QueryBuilder().and().deploymentVar("Test multi select", ["multi2"]).build()
+    "cme9xdi830179d2j99ue5lmoo",
+    new QueryBuilder().and().deploymentVar("Env", "Production").build()
   );
   const promptRun = await prompt?.run("Hello");
   console.log("Run: ", promptRun?.choices[0].message);
   
-  const promptChain = await maxim.getPromptChain("cmbupqd6u0003mlbkgn3k2lxy", new QueryBuilder().and().deploymentVar("Test multi select", ["part1", "part2", "part3"]).build());
-  const promptChainRun = await promptChain?.run("What is Cosmos about?");
-  console.log("Chain run: ", promptChainRun?.response);
+  // const promptChain = await maxim.getPromptChain("cmbupqd6u0003mlbkgn3k2lxy", new QueryBuilder().and().deploymentVar("Test multi select", ["part1", "part2", "part3"]).build());
+  // const promptChainRun = await promptChain?.run("What is Cosmos about?");
+  // console.log("Chain run: ", promptChainRun?.response);
 }
 
 main();
