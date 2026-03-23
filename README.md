@@ -524,6 +524,10 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.30.1
+
+- feat: Adds `elevenlabs` to providers lists for generation type check
+
 ### v6.30.0
 
 - fix: Fixed tool call errors showing up for Vercel AI SDK
