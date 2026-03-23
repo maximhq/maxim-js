@@ -15,7 +15,7 @@ import { MaximVercelProviderMetadata } from "./types";
  */
 export function determineProvider(
 	model: string,
-): "openai" | "bedrock" | "anthropic" | "huggingface" | "azure" | "together" | "groq" | "google" {
+): "openai" | "bedrock" | "anthropic" | "huggingface" | "azure" | "together" | "groq" | "google" | "elevenlabs" {
 	const mapper = (param: string) => {
 		if (param.includes("azure")) return "azure";
 		if (param.includes("azure_openai")) return "azure";
@@ -27,6 +27,7 @@ export function determineProvider(
 		if (param.includes("anthropic")) return "anthropic";
 		if (param.includes("google")) return "google";
 		if (param.includes("groq")) return "groq";
+		if (param.includes("elevenlabs")) return "elevenlabs";
 
 		return null;
 	};

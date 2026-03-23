@@ -1,8 +1,8 @@
 import type OpenAI from "openai";
 import { ChatCompletionMessage, CompletionRequest, CompletionRequestContent } from "../../models/prompt";
 import type { Attachment } from "../../types";
-import { uniqueId } from "../utils";
 import { ILogWriter } from "../types";
+import { uniqueId } from "../utils";
 import { EvaluatableBaseContainer } from "./base";
 import { Entity } from "./types";
 
@@ -88,7 +88,7 @@ export interface Cost {
 export type GenerationConfig = {
 	id: string;
 	name?: string;
-	provider: "openai" | "bedrock" | "anthropic" | "huggingface" | "azure" | "together" | "groq" | "google";
+	provider: "openai" | "bedrock" | "anthropic" | "huggingface" | "azure" | "together" | "groq" | "google" | "elevenlabs";
 	model: string;
 	maximPromptId?: string;
 	maximPromptVersionId?: string;
