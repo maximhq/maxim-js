@@ -10,23 +10,26 @@ import {
 	MaximAPITestRunEntryExecutePromptChainForDataResponse,
 	MaximAPITestRunEntryExecutePromptForDataPayload,
 	MaximAPITestRunEntryExecutePromptForDataResponse,
+	MaximAPITestRunEntryExecuteSimulationPromptGetResponse,
 	MaximAPITestRunEntryExecuteSimulationPromptPayload,
 	MaximAPITestRunEntryExecuteSimulationPromptPostResponse,
-	MaximAPITestRunEntryExecuteSimulationPromptGetResponse,
+	MaximAPITestRunEntryExecuteSimulationWorkflowGetResponse,
 	MaximAPITestRunEntryExecuteSimulationWorkflowPayload,
 	MaximAPITestRunEntryExecuteSimulationWorkflowPostResponse,
-	MaximAPITestRunEntryExecuteSimulationWorkflowGetResponse,
 	MaximAPITestRunEntryExecuteWorkflowForDataPayload,
 	MaximAPITestRunEntryExecuteWorkflowForDataResponse,
 	MaximAPITestRunEntryPushPayload,
 	MaximAPITestRunResultResponse,
-	MaximAPITestRunStatusResponse,
 	MaximAPITestRunSimulationLocalExecutionPayload,
 	MaximAPITestRunSimulationLocalExecutionPostResponse,
+	MaximAPITestRunSimulationLocalExecutionRawResponse,
+	MaximAPITestRunStatusResponse,
 	TestRunConfig,
 	TestRunResult,
 } from "../models/testRun";
-import type { Attachment, UrlAttachment } from "../types";
+import { MaximAPISignedURLResponse } from "../models/attachment";
+import type { Attachment, FileAttachment, FileDataAttachment, UrlAttachment } from "../types";
+import { platform } from "../platform";
 import { ExtractAPIDataType } from "../utils/utils";
 import { MaximAPI } from "./maxim";
 
@@ -230,60 +233,121 @@ export class MaximTestRunAPI extends MaximAPI {
 	}
 
 	/**
-	 * Converts Variable format to API format for dataEntry.
-	 * - TEXT Variable -> { type: "text", payload: string }
-	 * - FILE Variable -> { type: "file", payload: { files: [...], text?: string } }
+	 * Signed upload URL for log-repository attachments (same service as {@link MaximAttachmentAPI}).
 	 */
-	private convertVariableToAPIFormat(
+	private async getLogAttachmentUploadUrl(
+		key: string,
+		mimeType: string,
+		size: number,
+	): Promise<Extract<MaximAPISignedURLResponse, { data: unknown }>["data"]> {
+		const response = await this.fetch<MaximAPISignedURLResponse>(
+			`/api/sdk/v1/log-repositories/attachments/upload-url?key=${encodeURIComponent(key)}&mimeType=${encodeURIComponent(mimeType)}&size=${size}`,
+		);
+		if ("error" in response) {
+			throw response.error;
+		}
+		return response.data;
+	}
+
+	private async uploadBufferToSignedUrl(url: string, data: Buffer, mimeType: string): Promise<void> {
+		const response = await this.axiosInstance.put(url, data, {
+			headers: {
+				"Content-Type": mimeType,
+				"Content-Length": data.length.toString(),
+			},
+			responseType: "text",
+			timeout: 120000,
+			transformRequest: [(body: Buffer) => body],
+			transformResponse: [(body: unknown) => body],
+			baseURL: "",
+		});
+		if (response.status >= 200 && response.status < 300) {
+			return;
+		}
+		if (response.data && typeof response.data === "object" && "error" in response.data) {
+			throw (response.data as { error: unknown }).error;
+		}
+		throw response.data;
+	}
+
+	private async readFileOrFileDataAttachment(
+		attachment: FileAttachment | FileDataAttachment,
+	): Promise<{ fileData: Buffer; mimeType: string; size: number }> {
+		const maxFileSizeBytes = 1024 * 1024 * 100;
+		if (attachment.type === "fileData") {
+			const fileData = attachment.data;
+			const mimeType = attachment.mimeType || "application/octet-stream";
+			const size = fileData.length;
+			if (size > maxFileSizeBytes) {
+				throw new Error(`File size exceeds the maximum allowed size of ${maxFileSizeBytes} bytes`);
+			}
+			return { fileData, mimeType, size };
+		}
+		if (!platform.features.fileIoSupported) {
+			throw new Error("File operations are not supported in this environment");
+		}
+		let stats;
+		try {
+			stats = await platform.fs.readFile(attachment.path);
+		} catch {
+			throw new Error(`File not found: ${attachment.path}`);
+		}
+		if (stats.data.length > maxFileSizeBytes) {
+			throw new Error(`File size exceeds the maximum allowed size of ${maxFileSizeBytes} bytes`);
+		}
+		let fileData: Buffer;
+		try {
+			fileData = Buffer.from(stats.data);
+		} catch {
+			throw new Error(`File not found: ${attachment.path}`);
+		}
+		let mimeType = attachment.mimeType || "application/octet-stream";
+		if (!mimeType || mimeType === "application/octet-stream") {
+			const source = attachment.name ?? attachment.path;
+			const inferred = platform.mime.lookup(source);
+			if (inferred) {
+				mimeType = inferred;
+			}
+		}
+		return { fileData, mimeType, size: fileData.length };
+	}
+
+	/**
+	 * Resolves a remotely fetchable URL for push payloads: URL attachments pass through;
+	 * local file / in-memory fileData attachments are uploaded via the log attachment pipeline.
+	 */
+	private async resolveAttachmentUrlForPush(attachment: Attachment, testRunId: string): Promise<string> {
+		if (attachment.type === "url") {
+			const u = (attachment as UrlAttachment).url;
+			if (!u || (!u.startsWith("http://") && !u.startsWith("https://"))) {
+				throw new Error(`Invalid URL: ${u}`);
+			}
+			return u;
+		}
+		const { fileData, mimeType, size } = await this.readFileOrFileDataAttachment(attachment);
+		const key = `test-run/${testRunId}/${attachment.id}`;
+		const { url } = await this.getLogAttachmentUploadUrl(key, mimeType, size);
+		try {
+			await this.uploadBufferToSignedUrl(url, fileData, mimeType);
+		} catch (error) {
+			const name = attachment.name ?? attachment.id;
+			throw new Error(`Failed to upload attachment ${name}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		return url;
+	}
+
+	/**
+	 * Converts Variable format to API format for dataEntry (TEXT / JSON only).
+	 */
+	private convertNonFileVariableToAPIFormat(
 		variable: Variable,
-	): { type: "text"; payload: string } | { type: "file"; payload: { files: Array<{ id?: string; url: string; name?: string; type: string }>; text?: string } } {
+	): { type: "text"; payload: string } {
 		if (variable.type === VariableType.TEXT || variable.type === VariableType.JSON) {
 			return {
 				type: "text",
 				payload: variable.payload,
 			};
 		}
-
-		if (variable.type === VariableType.FILE) {
-			// Convert Attachment[] to API format
-			const files = variable.payload.map((attachment) => {
-				if (attachment.type === "url") {
-					return {
-						id: attachment.id,
-						url: attachment.url,
-						name: attachment.name,
-						type: attachment.mimeType || "application/octet-stream",
-					};
-				} else if (attachment.type === "file") {
-					// For file attachments, we need the URL - this might need to be handled differently
-					// For now, we'll use the path as URL if available
-					return {
-						id: attachment.id,
-						url: attachment.path, // Note: This might need adjustment based on how file paths are handled
-						name: attachment.name,
-						type: attachment.mimeType || "application/octet-stream",
-					};
-				} else {
-					// fileData attachments - these need special handling
-					// For now, we'll create a placeholder structure
-					return {
-						id: attachment.id,
-						url: "", // fileData attachments don't have URLs
-						name: attachment.name,
-						type: attachment.mimeType || "application/octet-stream",
-					};
-				}
-			});
-
-			return {
-				type: "file",
-				payload: {
-					files,
-				},
-			};
-		}
-
-		// Fallback (should not happen)
 		return {
 			type: "text",
 			payload: "",
@@ -291,13 +355,52 @@ export class MaximTestRunAPI extends MaximAPI {
 	}
 
 	/**
-	 * Converts dataEntry from Variable format to API format.
-	 * Handles the conversion of FILE variables to the API's expected file structure.
+	 * Converts a FILE variable to API format, uploading local/fileData attachments first.
 	 */
-	private convertDataEntryToAPIFormat(
+	private async convertFileVariableToAPIFormat(
+		variable: Extract<Variable, { type: VariableType.FILE }>,
+		testRunId: string,
+	): Promise<{ type: "file"; payload: { files: Array<{ id?: string; url: string; name?: string; type: string }>; text?: string } }> {
+		const files = await Promise.all(
+			variable.payload.map(async (attachment) => {
+				const url = await this.resolveAttachmentUrlForPush(attachment, testRunId);
+				return {
+					id: attachment.id,
+					url,
+					name: attachment.name,
+					type: attachment.mimeType || "application/octet-stream",
+				};
+			}),
+		);
+		return {
+			type: "file",
+			payload: { files },
+		};
+	}
+
+	/**
+	 * Converts dataEntry from Variable format to API format.
+	 * FILE variables upload non-URL attachments before building the payload.
+	 */
+	private async convertDataEntryToAPIFormat(
 		dataEntry: Record<string, string | string[] | Variable | null | undefined>,
-	): Record<string, { type: "text"; payload: string } | { type: "file"; payload: { files: Array<{ id?: string; url: string; name?: string; type: string }>; text?: string } } | null | undefined> {
-		const result: Record<string, { type: "text"; payload: string } | { type: "file"; payload: { files: Array<{ id?: string; url: string; name?: string; type: string }>; text?: string } } | null | undefined> = {};
+		testRunId: string,
+	): Promise<
+		Record<
+			string,
+			| { type: "text"; payload: string }
+			| { type: "file"; payload: { files: Array<{ id?: string; url: string; name?: string; type: string }>; text?: string } }
+			| null
+			| undefined
+		>
+	> {
+		const result: Record<
+			string,
+			| { type: "text"; payload: string }
+			| { type: "file"; payload: { files: Array<{ id?: string; url: string; name?: string; type: string }>; text?: string } }
+			| null
+			| undefined
+		> = {};
 
 		for (const [key, value] of Object.entries(dataEntry)) {
 			if (value === null || value === undefined) {
@@ -306,14 +409,17 @@ export class MaximTestRunAPI extends MaximAPI {
 			}
 
 			if (this.isVariable(value)) {
-				result[key] = this.convertVariableToAPIFormat(value);
+				if (value.type === VariableType.FILE) {
+					result[key] = await this.convertFileVariableToAPIFormat(value, testRunId);
+				} else {
+					result[key] = this.convertNonFileVariableToAPIFormat(value);
+				}
 			} else if (typeof value === "string") {
 				result[key] = {
 					type: "text",
 					payload: value,
 				};
 			} else if (Array.isArray(value)) {
-				// Convert string array to file format
 				const files = value.map((url, index) => ({
 					id: `${key}-${index}`,
 					url: url,
@@ -362,7 +468,7 @@ export class MaximTestRunAPI extends MaximAPI {
 		const convertedEntry = entry.dataEntry
 			? {
 					...entry,
-					dataEntry: this.convertDataEntryToAPIFormat(entry.dataEntry),
+					dataEntry: await this.convertDataEntryToAPIFormat(entry.dataEntry, testRun.id),
 				}
 			: entry;
 
@@ -719,10 +825,9 @@ export class MaximTestRunAPI extends MaximAPI {
 		});
 	}
 
-	public async executeSimulationLocalPromptExecution({
+	public async executeSimulationLocalExecution({
 		testRunId,
 		workspaceId,
-		promptVersionId,
 		datasetEntryId,
 		entry,
 		simulationConfig,
@@ -731,14 +836,6 @@ export class MaximTestRunAPI extends MaximAPI {
 	}: MaximAPITestRunSimulationLocalExecutionPayload): Promise<
 		ExtractAPIDataType<MaximAPITestRunSimulationLocalExecutionPostResponse>
 	> {
-		const resolvedPersona = simulationConfig?.persona
-			? typeof simulationConfig.persona === "string"
-				? simulationConfig.persona
-				: String(
-						(entry?.dataEntry as Record<string, unknown>)?.[simulationConfig.persona.payload] ?? "",
-					)
-			: undefined;
-
 		const convertedEntry =
 			entry?.dataEntry != null
 				? {
@@ -746,15 +843,14 @@ export class MaximTestRunAPI extends MaximAPI {
 						dataEntry: this.normalizeDataEntryToVariables(
 							entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>,
 						),
-						...(resolvedPersona !== undefined && { persona: resolvedPersona }),
 					}
-				: entry
-					? { ...entry, ...(resolvedPersona !== undefined && { persona: resolvedPersona }) }
-					: entry;
+				: entry;
+
+		const serializedSimulationConfig = this.serializeSimulationConfig(simulationConfig);
 
 		return new Promise((resolve, reject) => {
-			this.fetch<MaximAPITestRunSimulationLocalExecutionPostResponse>(
-				`/api/sdk/v2/test-run/simulation/prompt/local-execution`,
+			this.fetch<MaximAPITestRunSimulationLocalExecutionRawResponse>(
+				`/api/sdk/v2/test-run/simulation/local-execution`,
 				{
 					method: "POST",
 					headers: {
@@ -764,10 +860,9 @@ export class MaximTestRunAPI extends MaximAPI {
 					body: JSON.stringify({
 						testRunId,
 						workspaceId,
-						promptVersionId,
 						datasetEntryId,
 						entry: convertedEntry,
-						simulationConfig,
+						simulationConfig: serializedSimulationConfig,
 						conversationHistory,
 						testRunEntryId,
 					}),
@@ -777,7 +872,13 @@ export class MaximTestRunAPI extends MaximAPI {
 					if ("error" in response) {
 						reject(response.error);
 					} else {
-						resolve(response.data);
+						// Normalize userInput: backend returns string|null,
+						// convert to {input: string} for consumer convenience
+						const normalizedData = {
+							...response.data,
+							userInput: this.normalizeUserInput(response.data.userInput),
+						};
+						resolve(normalizedData);
 					}
 				})
 				.catch((error) => {
@@ -786,70 +887,38 @@ export class MaximTestRunAPI extends MaximAPI {
 		});
 	}
 
-	public async executeSimulationLocalWorkflowExecution({
-		testRunId,
-		workspaceId,
-		workflowId,
-		datasetEntryId,
-		entry,
-		simulationConfig,
-		conversationHistory,
-		testRunEntryId,
-	}: MaximAPITestRunSimulationLocalExecutionPayload): Promise<
-		ExtractAPIDataType<MaximAPITestRunSimulationLocalExecutionPostResponse>
-	> {
-		const resolvedPersona = simulationConfig?.persona
-			? typeof simulationConfig.persona === "string"
-				? simulationConfig.persona
-				: String(
-						(entry?.dataEntry as Record<string, unknown>)?.[simulationConfig.persona.payload] ?? "",
-					)
-			: undefined;
+	/**
+	 * Normalize userInput from backend (string|null) to Record<string, unknown>|null.
+	 * Backend returns plain string; SDK consumers expect {input: string}.
+	 */
+	private normalizeUserInput(userInput: string | null): Record<string, unknown> | null {
+		if (userInput === null || userInput === undefined) return null;
+		if (typeof userInput === "string") return { input: userInput };
+		if (typeof userInput === "object") return userInput as Record<string, unknown>;
+		return { input: String(userInput) };
+	}
 
-		const convertedEntry =
-			entry?.dataEntry != null
-				? {
-						...entry,
-						dataEntry: this.normalizeDataEntryToVariables(
-							entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>,
-						),
-						...(resolvedPersona !== undefined && { persona: resolvedPersona }),
-					}
-				: entry
-					? { ...entry, ...(resolvedPersona !== undefined && { persona: resolvedPersona }) }
-					: entry;
+	/**
+	 * Serialize simulationConfig for the backend API.
+	 * Flattens customSimulator fields to top level (matching backend's flat schema).
+	 */
+	private serializeSimulationConfig(
+		config: TestRunConfig["simulationConfig"],
+	): Record<string, unknown> | undefined {
+		if (!config) return undefined;
+		const result: Record<string, unknown> = { ...config };
 
-		return new Promise((resolve, reject) => {
-			this.fetch<MaximAPITestRunSimulationLocalExecutionPostResponse>(
-				`/api/sdk/v2/test-run/simulation/workflow/local-execution`,
-				{
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						Accept: "application/json",
-					},
-					body: JSON.stringify({
-						testRunId,
-						workspaceId,
-						workflowId,
-						datasetEntryId,
-						entry: convertedEntry,
-						simulationConfig,
-						conversationHistory,
-						testRunEntryId,
-					}),
-				},
-			)
-				.then((response) => {
-					if ("error" in response) {
-						reject(response.error);
-					} else {
-						resolve(response.data);
-					}
-				})
-				.catch((error) => {
-					reject(error);
-				});
-		});
+		if (config.customSimulator) {
+			result["type"] = "CUSTOM";
+			result["simulatorPrompt"] = config.customSimulator.simulatorPrompt;
+			if (config.customSimulator.model) result["model"] = config.customSimulator.model;
+			if (config.customSimulator.provider) result["provider"] = config.customSimulator.provider;
+			if (config.customSimulator.variables) result["variables"] = config.customSimulator.variables;
+			if (config.customSimulator.variableBindings) result["variableBindings"] = config.customSimulator.variableBindings;
+			if (config.customSimulator.modelParameters) result["modelParameters"] = config.customSimulator.modelParameters;
+			delete result["customSimulator"];
+		}
+
+		return result;
 	}
 }

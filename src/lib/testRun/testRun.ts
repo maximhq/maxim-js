@@ -103,11 +103,8 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 		const hasOutputFunctionWithTracing = !!config.outputFunctionWithTracing;
 		const outputSourceCount = (hasOutputFunction ? 1 : 0) + (hasOutputFunctionWithTracing ? 1 : 0) + (hasPromptVersion ? 1 : 0) + (hasPromptChainVersion ? 1 : 0) + (hasWorkflow ? 1 : 0);
 
-		// Simulation + yieldsOutput: requires outputFunction + (promptVersion OR workflow)
+		// Simulation + yieldsOutput: local-execution mode (no prompt/workflow ID required)
 		if (config.simulationConfig && hasOutputFunction) {
-			if (!hasPromptVersion && !hasWorkflow) {
-				errors.push("Simulation config with yieldsOutput requires either withPromptVersionId or withWorkflowId to be set.");
-			}
 			if (hasPromptChainVersion) {
 				errors.push("Simulation config with yieldsOutput cannot use withPromptChainVersionId. Use withPromptVersionId or withWorkflowId.");
 			}
@@ -128,7 +125,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				errors.push("Simulation config cannot be used with withPromptChainVersionId. Use withWorkflowId, withPromptVersionId, or yieldsOutput instead.");
 			}
 			if (!config.workflow && !config.promptVersion && !config.outputFunction) {
-				errors.push("Simulation config requires either withWorkflowId, withPromptVersionId, yieldsOutput to be set.");
+				errors.push("Simulation config requires either withWorkflowId, withPromptVersionId, or yieldsOutput to be set.");
 			}
 			if (config.simulationConfig.responseFields && config.simulationConfig.responseFields.length > 0 && !config.workflow) {
 				errors.push("responseFields in simulationConfig can only be used with withWorkflowId, not with withPromptVersionId, yieldsOutput or yieldsOutputWithTracing.");
@@ -233,13 +230,8 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 
 			// 2. get the output
 			if(config.simulationConfig && outputFunction) {
-				// Determine entity type (prompt or workflow)
-				const entityType = workflow ? "workflow" : "prompt";
-				const promptVersionId = promptVersion?.id;
-				const workflowIdForSim = workflow?.id;
-
 				let contextToEvaluateForSimulation = contextToEvaluate ?? promptVersion?.contextToEvaluate ?? workflow?.contextToEvaluate;
-				
+
 				// Build the simulation closure
 				const outputFunctionToExecute = simulationYieldsOutputFunctionClosure<T>(
 					testRun.id,
@@ -247,9 +239,6 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 					config.simulationConfig,
 					outputFunction,
 					APITestRunService,
-					entityType,
-					promptVersionId,
-					workflowIdForSim,
 					row.id,
 					input,
 					scenario,
@@ -426,7 +415,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 
 				return;
 			} // Make sure if its local workflow or remote workflow
-			else if (outputFunction || outputFunctionWithTracing || evaluators.filter((e) => typeof e !== "string").length > 0) {
+			else if (outputFunction || outputFunctionWithTracing || evaluators.filter((e) => typeof e !== "string").length > 0     || (config.simulationConfig && (workflow || promptVersion))) {
 			// Make sure if its local workflow or remote workflow
 				let outputFunctionToExecute: NonNullable<TestRunConfig<T>["outputFunction"]> | undefined;
 				let outputFunctionWithTracingToExecute: NonNullable<TestRunConfig<T>["outputFunctionWithTracing"]> | undefined;
@@ -436,13 +425,9 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 				} else if (outputFunctionWithTracing) {
 					outputFunctionWithTracingToExecute = outputFunctionWithTracing;
 				} else {
-					// Check if we need to use simulation endpoints (simulationConfig + local evaluators)
-					const hasLocalEvaluators =
-						evaluators.filter((e) => typeof e !== "string" && "evaluationFunction" in e).length > 0;
-					const useSimulationEndpoints = config.simulationConfig && hasLocalEvaluators;
 
 					if (workflow) {
-						if (useSimulationEndpoints) {
+						if (config.simulationConfig) {
 							const contextToEvaluateForSimulation = contextToEvaluate ?? workflow.contextToEvaluate;
 							outputFunctionToExecute = simulationWorkflowIdOutputFunctionClosure<T>(
 								testRun.id,
@@ -465,7 +450,7 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 							);
 						}
 					} else if (promptVersion) {
-						if (useSimulationEndpoints) {
+						if (config.simulationConfig) {
 							// Use contextToEvaluate from row data, or fallback to promptVersion.contextToEvaluate
 							const contextToEvaluateForSimulation = contextToEvaluate ?? promptVersion.contextToEvaluate;
 							outputFunctionToExecute = simulationPromptVersionIdOutputFunctionClosure<T>(
@@ -503,12 +488,17 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 					}
 				}
 
-				const testRunEntry = await APITestRunService.createTestRunEntry({
-					testRun: { ...testRun, datasetId, datasetEntryId: row.id },
-				});
+				// When using simulation endpoints, the backend creates the entry via the simulation API —
+				// do NOT create one separately (matches Python: create_test_run_entry only when simulation_config is None)
+				let testRunEntry: { id: string } | undefined;
+				if (!config.simulationConfig) {
+					testRunEntry = await APITestRunService.createTestRunEntry({
+						testRun: { ...testRun, datasetId, datasetEntryId: row.id },
+					});
+				}
 
 				const traceId = uuidv4();
-				if (!config.disableDefaultTraceCreation && internalMaximLogger) {
+				if (!config.disableDefaultTraceCreation && internalMaximLogger && testRunEntry) {
 					try {
 						const testRunEntryTrace = internalMaximLogger.trace({
 							id: traceId,
@@ -637,72 +627,95 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 					}
 				}
 
-				try {
-				await APITestRunService.pushTestRunEntry({
-					testRun: { ...testRun, datasetId, datasetEntryId: row.id },
-					runConfig: output.meta
-						? {
-							cost: output.meta.cost,
-							usage: output.meta.usage
-								? "completionTokens" in output.meta.usage
-									? {
-										completion_tokens: output.meta.usage.completionTokens,
-										prompt_tokens: output.meta.usage.promptTokens,
-										total_tokens: output.meta.usage.totalTokens,
-										latency: output.meta.usage.latency,
-									}
-									: {
-										latency: output.meta.usage.latency,
-									}
-								: undefined,
-						}
-						: undefined,
-					entry: {
-						id: testRunEntry.id,
-						input,
-						output: output.data,
-						meta: {
-							sdkVariables:
-								evaluatorOutputOverrides && Object.keys(evaluatorOutputOverrides).length > 0
-									? Object.entries(evaluatorOutputOverrides).reduce(
-										(acc, [id, val]) => {
-											acc[id] = {
-												type: VariableType.JSON,
-												payload: JSON.stringify(val),
-											};
-											return acc;
-										},
-										{} as Record<string, Variable>,
-									)
-									: undefined,
-							connectedTraceId: internalMaximLogger ? traceId : undefined,
-						},
-						expectedOutput,
-						contextToEvaluate,
-						scenario,
-						expectedSteps,
-						dataEntry: row.data,
-						localEvaluationResults: localEvaluationResults
-							? localEvaluationResults.map((result) => ({
-								...result,
-								id: localEvaluatorNameToIdAndPassFailCriteriaMap.get(result.name)!.id,
-							}))
-							: undefined,
-						simulationMeta: output.simulationMeta,
-					},
-				});
-					
-				} catch (pushError) {
-					const testRunEntryId = output?.simulationMeta?.testRunEntryId;
-					if (testRunEntryId) {
-						try {
-							await APITestRunService.updateSimulationStatus(testRunEntryId, "FAILED");
-						} catch (cleanupError) {
-							const msg = `Failed to mark simulation as failed after push error (testRunEntryId: ${testRunEntryId}): ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
-							"error" in logger && typeof logger.error === "function" ? logger.error(msg) : logger.info(msg);
+				// For simulation endpoint entries, the backend already ran full simulation + evaluation.
+				// Only push if we have local eval results to send; skip otherwise to avoid double evaluation.
+				const isSimulationEndpointEntry = !!config.simulationConfig && !outputFunction && !outputFunctionWithTracing;
+				const hasLocalEvalResults = localEvaluationResults && localEvaluationResults.length > 0;
+				const shouldPush = !isSimulationEndpointEntry || hasLocalEvalResults;
+
+				if (shouldPush) {
+					// For simulation endpoint entries with local results: filter evalConfig to only
+					// local evaluators so the V4 push fast path marks COMPLETE without re-queuing
+					// for platform evals (which the simulation worker already ran).
+					const pushTestRun: Record<string, unknown> = { ...testRun, datasetId, datasetEntryId: row.id };
+					if (isSimulationEndpointEntry) {
+						const ec = pushTestRun["evalConfig"] as Record<string, unknown> | undefined;
+						if (ec && Array.isArray(ec["evals"])) {
+							pushTestRun["evalConfig"] = {
+								...ec,
+								evals: (ec["evals"] as Array<Record<string, unknown>>).filter(
+									(e) => e["type"] === "Local",
+								),
+							};
 						}
 					}
-					throw pushError;
+
+					try {
+						await APITestRunService.pushTestRunEntry({
+							testRun: pushTestRun as typeof testRun & { datasetId?: string; datasetEntryId?: string },
+							runConfig: output.meta
+								? {
+									cost: output.meta.cost,
+									usage: output.meta.usage
+										? "completionTokens" in output.meta.usage
+											? {
+												completion_tokens: output.meta.usage.completionTokens,
+												prompt_tokens: output.meta.usage.promptTokens,
+												total_tokens: output.meta.usage.totalTokens,
+												latency: output.meta.usage.latency,
+											}
+											: {
+												latency: output.meta.usage.latency,
+											}
+										: undefined,
+								}
+								: undefined,
+							entry: {
+								id: testRunEntry?.id,
+								input,
+								output: output.data,
+								meta: {
+									sdkVariables:
+										evaluatorOutputOverrides && Object.keys(evaluatorOutputOverrides).length > 0
+											? Object.entries(evaluatorOutputOverrides).reduce(
+												(acc, [id, val]) => {
+													acc[id] = {
+														type: VariableType.JSON,
+														payload: JSON.stringify(val),
+													};
+													return acc;
+												},
+												{} as Record<string, Variable>,
+											)
+											: undefined,
+									connectedTraceId: internalMaximLogger ? traceId : undefined,
+								},
+								expectedOutput,
+								contextToEvaluate,
+								scenario,
+								expectedSteps,
+								dataEntry: row.data,
+								localEvaluationResults: localEvaluationResults
+									? localEvaluationResults.map((result) => ({
+										...result,
+										id: localEvaluatorNameToIdAndPassFailCriteriaMap.get(result.name)!.id,
+									}))
+									: undefined,
+								simulationMeta: output.simulationMeta,
+							},
+						});
+					} catch (pushError) {
+						const testRunEntryId = output?.simulationMeta?.testRunEntryId;
+						if (testRunEntryId) {
+							try {
+								await APITestRunService.updateSimulationStatus(testRunEntryId, "FAILED");
+							} catch (cleanupError) {
+								const msg = `Failed to mark simulation as failed after push error (testRunEntryId: ${testRunEntryId}): ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
+								"error" in logger && typeof logger.error === "function" ? logger.error(msg) : logger.info(msg);
+							}
+						}
+						throw pushError;
+					}
 				}
 
 				// 5. log the test run entry with local evaluation results
@@ -789,12 +802,15 @@ export const createTestRunBuilder = <T extends DataStructure | undefined = undef
 
 			const tagsEnrichedWithRepoId = config.maximLogger ? [...(tags ?? []), `repoId:${config.maximLogger.id}`] : tags;
 
+			const hasLocalEvaluators = evaluators.filter((e) => typeof e !== "string" && "evaluationFunction" in e).length > 0;
+			const requiresLocalRun = hasLocalEvaluators || !!config.outputFunction || !!config.outputFunctionWithTracing;
+
 			const testRun = await APITestRunService.createTestRun(
 				name,
 				workspaceId,
 				"SINGLE",
 				evalConfig,
-				evaluators.filter((e) => typeof e !== "string" && "evaluationFunction" in e).length > 0 ? true : false,
+				requiresLocalRun,
 				workflow?.id,
 				promptVersion?.id,
 				promptChainVersion?.id,

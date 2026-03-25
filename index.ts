@@ -55,6 +55,8 @@ export type {
 } from "./src/lib/models/prompt";
 export * from "./src/lib/models/queryBuilder";
 export type {
+	CustomSimulatorConfig,
+	SimulationContext,
 	SimulationConversationTurn,
 	SimulationMeta,
 	TestRunBuilder,

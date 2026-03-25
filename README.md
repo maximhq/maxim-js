@@ -524,6 +524,12 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.30.2
+
+- feat: Adds support for `simulation` with `yieldsOutput`
+- feat: Adds support for linking test runs with logs
+
+
 ### v6.30.1
 
 - feat: Adds `elevenlabs` to providers lists for generation type check
