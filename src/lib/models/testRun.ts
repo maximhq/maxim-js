@@ -163,6 +163,18 @@ export type SimulationConversationTurn = {
 };
 
 /**
+ * Context passed to the output function during simulation turns.
+ * Provides conversation history, current user input, and cumulative usage/cost data.
+ */
+export type SimulationContext = {
+	conversationHistory: SimulationConversationTurn[];
+	currentUserInput: Record<string, unknown>;
+	turnNumber: number;
+	totalCost: number;
+	totalTokens: number;
+};
+
+/**
  * Metadata returned from simulation endpoints.
  * Contains the full simulation conversation and trace data.
  */
@@ -320,6 +332,19 @@ export type TestRunResult = {
 };
 
 /**
+ * Configuration for a custom simulator that uses a user-provided prompt
+ * instead of the default Maxim simulator.
+ */
+export type CustomSimulatorConfig = {
+	simulatorPrompt: string;
+	model: string;
+	provider: string;
+	variables?: Record<string, string>;
+	variableBindings?: Record<string, unknown>;
+	modelParameters?: Record<string, unknown>;
+};
+
+/**
  * Configuration for a test run.
  */
 export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
@@ -335,17 +360,9 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 	humanEvaluationConfig?: HumanEvaluationConfig;
 	outputFunction?: (
 		data: Data<T>,
-		simulationContext?: {
-			conversationHistory: SimulationConversationTurn[];
-			currentUserInput: Record<string, unknown>;
-			turnNumber: number;
-		},
+		simulationContext?: SimulationContext,
 	) => YieldedOutput | Promise<YieldedOutput>;
-	outputFunctionWithTracing?: (data: Data<T>, traceId: string, simulationContext?: {
-		conversationHistory: SimulationConversationTurn[];
-		currentUserInput: Record<string, unknown>;
-		turnNumber: number;
-	}) => YieldedOutput | Promise<YieldedOutput>;
+	outputFunctionWithTracing?: (data: Data<T>, traceId: string, simulationContext?: SimulationContext) => YieldedOutput | Promise<YieldedOutput>;
 	maximLogger?: MaximLogger;
 	disableDefaultTraceCreation?: boolean;
 	promptVersion?: {
@@ -378,6 +395,7 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 			value: string | boolean | number;
 		};
 		additionalInstructions?: string;
+		customSimulator?: CustomSimulatorConfig;
 	};
 	logger?: TestRunLogger<T>;
 	concurrency?: number;
@@ -1117,8 +1135,6 @@ export type MaximAPITestRunEntryExecuteSimulationWorkflowResponse =
 export type MaximAPITestRunSimulationLocalExecutionPayload = {
 	testRunId: string;
 	workspaceId: string;
-	promptVersionId?: string;
-	workflowId?: string;
 	datasetEntryId?: string;
 	entry?: {
 		input?: string | null;
@@ -1126,21 +1142,47 @@ export type MaximAPITestRunSimulationLocalExecutionPayload = {
 		expectedSteps?: string | null;
 		contextToEvaluate?: string | string[] | null;
 		dataEntry?: Record<string, string | string[] | null | undefined> | null;
-		persona?: string | null;
 	};
 	simulationConfig: TestRunConfig["simulationConfig"];
 	conversationHistory?: SimulationConversationTurn[];
 	testRunEntryId?: string;
 };
 
+// Raw response from the backend (before normalization)
+export type MaximAPITestRunSimulationLocalExecutionRawResponse =
+	| {
+			data: {
+				testRunEntryId?: string;
+				userInput: string | null;
+				stopReason?: "STOP_PHRASE" | "MAX_TURNS" | null;
+				usage?: {
+					promptTokens: number;
+					completionTokens: number;
+					totalTokens: number;
+					latency?: number;
+				};
+				cost?: {
+					input: number;
+					output: number;
+					total: number;
+				};
+				sessionId?: string;
+				simulationId?: string;
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+// Normalized response after SDK processing (userInput converted to object)
 export type MaximAPITestRunSimulationLocalExecutionPostResponse =
 	| {
 			data: {
-				testRunEntryId: string;
-				userInput: Record<string, unknown>; // User input keyed by request_fields (workflow) or { input } (prompt)
-				turnNumber: number;
-				isComplete: boolean;
-				stopReason?: string; // Reason for simulation stop from backend
+				testRunEntryId?: string;
+				userInput: Record<string, unknown> | null;
+				stopReason?: "STOP_PHRASE" | "MAX_TURNS" | null;
 				usage?: {
 					promptTokens: number;
 					completionTokens: number;

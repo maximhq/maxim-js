@@ -23,6 +23,7 @@ import {
 	MaximAPITestRunStatusResponse,
 	MaximAPITestRunSimulationLocalExecutionPayload,
 	MaximAPITestRunSimulationLocalExecutionPostResponse,
+	MaximAPITestRunSimulationLocalExecutionRawResponse,
 	TestRunConfig,
 	TestRunResult,
 } from "../models/testRun";
@@ -719,10 +720,9 @@ export class MaximTestRunAPI extends MaximAPI {
 		});
 	}
 
-	public async executeSimulationLocalPromptExecution({
+	public async executeSimulationLocalExecution({
 		testRunId,
 		workspaceId,
-		promptVersionId,
 		datasetEntryId,
 		entry,
 		simulationConfig,
@@ -731,14 +731,6 @@ export class MaximTestRunAPI extends MaximAPI {
 	}: MaximAPITestRunSimulationLocalExecutionPayload): Promise<
 		ExtractAPIDataType<MaximAPITestRunSimulationLocalExecutionPostResponse>
 	> {
-		const resolvedPersona = simulationConfig?.persona
-			? typeof simulationConfig.persona === "string"
-				? simulationConfig.persona
-				: String(
-						(entry?.dataEntry as Record<string, unknown>)?.[simulationConfig.persona.payload] ?? "",
-					)
-			: undefined;
-
 		const convertedEntry =
 			entry?.dataEntry != null
 				? {
@@ -746,15 +738,14 @@ export class MaximTestRunAPI extends MaximAPI {
 						dataEntry: this.normalizeDataEntryToVariables(
 							entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>,
 						),
-						...(resolvedPersona !== undefined && { persona: resolvedPersona }),
 					}
-				: entry
-					? { ...entry, ...(resolvedPersona !== undefined && { persona: resolvedPersona }) }
-					: entry;
+				: entry;
+
+		const serializedSimulationConfig = this.serializeSimulationConfig(simulationConfig);
 
 		return new Promise((resolve, reject) => {
-			this.fetch<MaximAPITestRunSimulationLocalExecutionPostResponse>(
-				`/api/sdk/v2/test-run/simulation/prompt/local-execution`,
+			this.fetch<MaximAPITestRunSimulationLocalExecutionRawResponse>(
+				`/api/sdk/v2/test-run/simulation/local-execution`,
 				{
 					method: "POST",
 					headers: {
@@ -764,10 +755,9 @@ export class MaximTestRunAPI extends MaximAPI {
 					body: JSON.stringify({
 						testRunId,
 						workspaceId,
-						promptVersionId,
 						datasetEntryId,
 						entry: convertedEntry,
-						simulationConfig,
+						simulationConfig: serializedSimulationConfig,
 						conversationHistory,
 						testRunEntryId,
 					}),
@@ -777,7 +767,13 @@ export class MaximTestRunAPI extends MaximAPI {
 					if ("error" in response) {
 						reject(response.error);
 					} else {
-						resolve(response.data);
+						// Normalize userInput: backend returns string|null,
+						// convert to {input: string} for consumer convenience
+						const normalizedData = {
+							...response.data,
+							userInput: this.normalizeUserInput(response.data.userInput),
+						};
+						resolve(normalizedData);
 					}
 				})
 				.catch((error) => {
@@ -786,70 +782,38 @@ export class MaximTestRunAPI extends MaximAPI {
 		});
 	}
 
-	public async executeSimulationLocalWorkflowExecution({
-		testRunId,
-		workspaceId,
-		workflowId,
-		datasetEntryId,
-		entry,
-		simulationConfig,
-		conversationHistory,
-		testRunEntryId,
-	}: MaximAPITestRunSimulationLocalExecutionPayload): Promise<
-		ExtractAPIDataType<MaximAPITestRunSimulationLocalExecutionPostResponse>
-	> {
-		const resolvedPersona = simulationConfig?.persona
-			? typeof simulationConfig.persona === "string"
-				? simulationConfig.persona
-				: String(
-						(entry?.dataEntry as Record<string, unknown>)?.[simulationConfig.persona.payload] ?? "",
-					)
-			: undefined;
+	/**
+	 * Normalize userInput from backend (string|null) to Record<string, unknown>|null.
+	 * Backend returns plain string; SDK consumers expect {input: string}.
+	 */
+	private normalizeUserInput(userInput: string | null): Record<string, unknown> | null {
+		if (userInput === null || userInput === undefined) return null;
+		if (typeof userInput === "string") return { input: userInput };
+		if (typeof userInput === "object") return userInput as Record<string, unknown>;
+		return { input: String(userInput) };
+	}
 
-		const convertedEntry =
-			entry?.dataEntry != null
-				? {
-						...entry,
-						dataEntry: this.normalizeDataEntryToVariables(
-							entry.dataEntry as Record<string, string | string[] | Variable | null | undefined>,
-						),
-						...(resolvedPersona !== undefined && { persona: resolvedPersona }),
-					}
-				: entry
-					? { ...entry, ...(resolvedPersona !== undefined && { persona: resolvedPersona }) }
-					: entry;
+	/**
+	 * Serialize simulationConfig for the backend API.
+	 * Flattens customSimulator fields to top level (matching backend's flat schema).
+	 */
+	private serializeSimulationConfig(
+		config: TestRunConfig["simulationConfig"],
+	): Record<string, unknown> | undefined {
+		if (!config) return undefined;
+		const result: Record<string, unknown> = { ...config };
 
-		return new Promise((resolve, reject) => {
-			this.fetch<MaximAPITestRunSimulationLocalExecutionPostResponse>(
-				`/api/sdk/v2/test-run/simulation/workflow/local-execution`,
-				{
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						Accept: "application/json",
-					},
-					body: JSON.stringify({
-						testRunId,
-						workspaceId,
-						workflowId,
-						datasetEntryId,
-						entry: convertedEntry,
-						simulationConfig,
-						conversationHistory,
-						testRunEntryId,
-					}),
-				},
-			)
-				.then((response) => {
-					if ("error" in response) {
-						reject(response.error);
-					} else {
-						resolve(response.data);
-					}
-				})
-				.catch((error) => {
-					reject(error);
-				});
-		});
+		if (config.customSimulator) {
+			result["type"] = "CUSTOM";
+			result["simulatorPrompt"] = config.customSimulator.simulatorPrompt;
+			if (config.customSimulator.model) result["model"] = config.customSimulator.model;
+			if (config.customSimulator.provider) result["provider"] = config.customSimulator.provider;
+			if (config.customSimulator.variables) result["variables"] = config.customSimulator.variables;
+			if (config.customSimulator.variableBindings) result["variableBindings"] = config.customSimulator.variableBindings;
+			if (config.customSimulator.modelParameters) result["modelParameters"] = config.customSimulator.modelParameters;
+			delete result["customSimulator"];
+		}
+
+		return result;
 	}
 }

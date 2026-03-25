@@ -406,6 +406,7 @@ export function simulationPromptVersionIdOutputFunctionClosure<T extends DataStr
 							retrievedContextToEvaluate: undefined,
 							messages: result.messages,
 							simulationMeta: {
+								testRunEntryId: postResult.testRunEntryId,
 								sessionId: result.sessionId,
 								simulationId: result.simulationId,
 								messages: result.messages ?? [],
@@ -422,6 +423,7 @@ export function simulationPromptVersionIdOutputFunctionClosure<T extends DataStr
 							retrievedContextToEvaluate: undefined,
 							messages: result.messages,
 							simulationMeta: {
+								testRunEntryId: postResult.testRunEntryId,
 								sessionId: result.sessionId,
 								simulationId: result.simulationId,
 								messages: result.messages ?? [],
@@ -489,6 +491,7 @@ export function simulationWorkflowIdOutputFunctionClosure<T extends DataStructur
 							retrievedContextToEvaluate: undefined,
 							messages: undefined,
 							simulationMeta: {
+								testRunEntryId: postResult.testRunEntryId,
 								sessionId: result.sessionId,
 								simulationId: result.simulationId,
 								messages: [],
@@ -508,6 +511,7 @@ export function simulationWorkflowIdOutputFunctionClosure<T extends DataStructur
 							retrievedContextToEvaluate: undefined,
 							messages: undefined,
 							simulationMeta: {
+								testRunEntryId: postResult.testRunEntryId,
 								sessionId: result.sessionId,
 								simulationId: result.simulationId,
 								messages: [],
@@ -535,9 +539,6 @@ export function simulationYieldsOutputFunctionClosure<T extends DataStructure | 
 	simulationConfig: NonNullable<TestRunConfig<T>["simulationConfig"]>,
 	outputFunction: NonNullable<TestRunConfig<T>["outputFunction"]>,
 	TestRunAPIService: MaximTestRunAPI,
-	entityType: "prompt" | "workflow",
-	promptVersionId: string | undefined,
-	workflowId: string | undefined,
 	datasetEntryId: string | undefined,
 	input: string | undefined,
 	scenario: string | undefined,
@@ -593,7 +594,7 @@ export function simulationYieldsOutputFunctionClosure<T extends DataStructure | 
 				}
 			}
 
-			const resolvedPersona = datasetPersona ?? simconfigPersona ;
+			const resolvedPersona = datasetPersona ?? simconfigPersona;
 			const resolvedSimulationConfig = { ...simulationConfig, persona: resolvedPersona };
 
 			// Turn-by-turn simulation loop
@@ -602,50 +603,24 @@ export function simulationYieldsOutputFunctionClosure<T extends DataStructure | 
 				turnNumber++;
 
 				// Call the local-execution endpoint to get the next user message
-				let turnResult;
-				if (entityType === "prompt") {
-					turnResult = await TestRunAPIService.executeSimulationLocalPromptExecution({
-						testRunId,
-						workspaceId,
-						promptVersionId,
-						datasetEntryId,
-						entry:
-							turnNumber === 1
-								? {
-										input: input ?? null,
-										scenario: scenario ?? null,
-										expectedSteps: expectedSteps ?? null,
-										contextToEvaluate: contextToEvaluate ?? null,
-										dataEntry: data,
-									}
-								: undefined,
-						simulationConfig: resolvedSimulationConfig,
-						conversationHistory: turnNumber > 1 ? conversationHistory : undefined,
-						testRunEntryId,
-					});
-				} else if (entityType === "workflow") {
-					turnResult = await TestRunAPIService.executeSimulationLocalWorkflowExecution({
-						testRunId,
-						workspaceId,
-						workflowId,
-						datasetEntryId,
-						entry:
-							turnNumber === 1
-								? {
-										input: input ?? null,
-										scenario: scenario ?? null,
-										expectedSteps: expectedSteps ?? null,
-										contextToEvaluate: contextToEvaluate ?? null,
-										dataEntry: data,
-									}
-								: undefined,
-						simulationConfig: resolvedSimulationConfig,
-						conversationHistory: turnNumber > 1 ? conversationHistory : undefined,
-						testRunEntryId,
-					});
-				} else {
-					throw new Error(`Invalid entity type: ${entityType}`);
-				}
+				const turnResult = await TestRunAPIService.executeSimulationLocalExecution({
+					testRunId,
+					workspaceId,
+					datasetEntryId: turnNumber === 1 ? datasetEntryId : undefined,
+					entry:
+						turnNumber === 1
+							? {
+									input: input ?? null,
+									scenario: scenario ?? null,
+									expectedSteps: expectedSteps ?? null,
+									contextToEvaluate: contextToEvaluate ?? null,
+									dataEntry: data,
+								}
+							: undefined,
+					simulationConfig: resolvedSimulationConfig,
+					conversationHistory: turnNumber > 1 ? conversationHistory : undefined,
+					testRunEntryId,
+				});
 
 				// Store testRunEntryId, sessionId, simulationId from first turn
 				if (turnNumber === 1) {
@@ -674,39 +649,38 @@ export function simulationYieldsOutputFunctionClosure<T extends DataStructure | 
 					break;
 				}
 
-				// Check if simulation is complete from backend
-				if (turnResult.isComplete) {
+				// userInput is normalized to Record<string, unknown>|null by the API layer
+				const userInput = turnResult.userInput;
+
+				// If userInput is null/undefined, simulation has ended
+				if (userInput === null || userInput === undefined) {
 					isComplete = true;
 					break;
 				}
-
-				const userInput = turnResult.userInput;
 
 				// Call the user's outputFunction with simulation context
 				const assistantOutput = await outputFunction(data, {
 					conversationHistory,
 					currentUserInput: userInput,
 					turnNumber,
+					totalCost,
+					totalTokens,
 				});
 
-				// Build response: Prompt = { output, tool_calls? }, Workflow = simulationResponse ?? { output }
-				const response: Record<string, unknown> =
-					entityType === "prompt"
-						? {
-								output: assistantOutput.data,
-								tool_calls: assistantOutput.toolCalls ?? [],
-							}
-						: assistantOutput.simulationResponse ?? { output: assistantOutput.data };
+				// Build response for conversation history
+				const response: Record<string, unknown> = {
+					output: assistantOutput.data,
+					tool_calls: assistantOutput.toolCalls ?? [],
+				};
 
 				simulationOutputs.push(assistantOutput.data);
 
 				// Add turn to conversation history for next API call
-				const normalizedRequest: Record<string, unknown> =
-					entityType === "prompt"
-						? { input: userInput ?? "" }
-						: typeof userInput === "object" && userInput !== null
-							? userInput
-							: { input: String(userInput ?? "") };
+				const normalizedRequest: Record<string, unknown> = {
+					input: typeof userInput === "object" && userInput !== null
+						? ((userInput as Record<string, unknown>)["input"] ?? "")
+						: String(userInput ?? ""),
+				};
 				conversationHistory.push({
 					turn: turnNumber,
 					request: normalizedRequest,
