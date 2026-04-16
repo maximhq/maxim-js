@@ -54,7 +54,17 @@ export type {
 	ToolCallFunction,
 } from "./src/lib/models/prompt";
 export * from "./src/lib/models/queryBuilder";
-export type { TestRunBuilder, TestRunConfig, TestRunLogger, TestRunResult, YieldedOutput } from "./src/lib/models/testRun";
+export type {
+	CustomSimulatorConfig,
+	SimulationContext,
+	SimulationConversationTurn,
+	SimulationMeta,
+	TestRunBuilder,
+	TestRunConfig,
+	TestRunLogger,
+	TestRunResult,
+	YieldedOutput,
+} from "./src/lib/models/testRun";
 export * from "./src/lib/utils/csvParser";
 export * from "./src/lib/utils/secureRandom";
 // Additional exports for complete documentation coverage

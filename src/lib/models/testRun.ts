@@ -1,4 +1,5 @@
 import type { Data, DataStructure, DataValue, Variable } from "../models/dataset";
+import type { MaximLogger } from "../logger/logger";
 import type {
 	CombinedLocalEvaluatorType,
 	HumanEvaluationConfig,
@@ -149,15 +150,59 @@ export interface TestRunLogger<T extends DataStructure | undefined = undefined> 
  */
 
 /**
+ * A single turn in the simulation conversation history.
+ * Request/response shapes depend on workflow or prompt config.
+ * - Workflow: request_fields and response_fields from workflow config
+ * - Prompt: request = { input }, response = { output, tool_calls? }
+ */
+export type SimulationConversationTurn = {
+	turn: number;
+	request: Record<string, unknown>;
+	response: Record<string, unknown>;
+	reasoning?: string;
+};
+
+/**
+ * Context passed to the output function during simulation turns.
+ * Provides conversation history, current user input, and cumulative usage/cost data.
+ */
+export type SimulationContext = {
+	conversationHistory: SimulationConversationTurn[];
+	currentUserInput: Record<string, unknown>;
+	turnNumber: number;
+	totalCost: number;
+	totalTokens: number;
+};
+
+/**
  * Metadata returned from simulation endpoints.
  * Contains the full simulation conversation and trace data.
  */
 export type SimulationMeta = {
+	testRunEntryId?: string;
 	sessionId?: string;
 	simulationId?: string;
 	messages: unknown[];
+	/** Last turn (user input + assistant response) for push to append to session messages */
+	lastTurn?: {
+		turn: number;
+		request: Record<string, unknown>;
+		response: Record<string, unknown>;
+	};
 	trace?: unknown[];
 	turns?: unknown[]; // For workflow simulations
+	stopReason?: string; // Reason for simulation stop from backend (e.g. from /local-execution)
+	usage?: {
+		promptTokens: number;
+		completionTokens: number;
+		totalTokens: number;
+		latency?: number;
+	};
+	cost?: {
+		input: number;
+		output: number;
+		total: number;
+	};
 };
 
 export type YieldedOutput = {
@@ -166,6 +211,10 @@ export type YieldedOutput = {
 	retrievedContextToEvaluate?: string | string[];
 	messages?: unknown[];
 	simulationMeta?: SimulationMeta;
+	/** For simulation workflow: full response shape keyed by response_fields. If omitted, { output: data } is used. */
+	simulationResponse?: Record<string, unknown>;
+	/** For simulation prompt: tool calls if assistant used tools. */
+	toolCalls?: unknown[];
 	meta?: {
 		usage?:
 			| {
@@ -283,6 +332,19 @@ export type TestRunResult = {
 };
 
 /**
+ * Configuration for a custom simulator that uses a user-provided prompt
+ * instead of the default Maxim simulator.
+ */
+export type CustomSimulatorConfig = {
+	simulatorPrompt: string;
+	model: string;
+	provider: string;
+	variables?: Record<string, string>;
+	variableBindings?: Record<string, unknown>;
+	modelParameters?: Record<string, unknown>;
+};
+
+/**
  * Configuration for a test run.
  */
 export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
@@ -296,7 +358,13 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 	data?: DataValue<T>;
 	evaluators: (LocalEvaluatorType<T> | CombinedLocalEvaluatorType<T, Record<string, PassFailCriteriaType>> | string | PlatformEvaluator)[];
 	humanEvaluationConfig?: HumanEvaluationConfig;
-	outputFunction?: (data: Data<T>) => YieldedOutput | Promise<YieldedOutput>;
+	outputFunction?: (
+		data: Data<T>,
+		simulationContext?: SimulationContext,
+	) => YieldedOutput | Promise<YieldedOutput>;
+	outputFunctionWithTracing?: (data: Data<T>, traceId: string, simulationContext?: SimulationContext) => YieldedOutput | Promise<YieldedOutput>;
+	maximLogger?: MaximLogger;
+	disableDefaultTraceCreation?: boolean;
 	promptVersion?: {
 		id: string;
 		contextToEvaluate?: string;
@@ -322,6 +390,12 @@ export type TestRunConfig<T extends DataStructure | undefined = undefined> = {
 		};
 		responseFields?: string[];
 		environmentId?: string;
+		stopTrigger?: {
+			field: string;
+			value: string | boolean | number;
+		};
+		additionalInstructions?: string;
+		customSimulator?: CustomSimulatorConfig;
 	};
 	logger?: TestRunLogger<T>;
 	concurrency?: number;
@@ -510,9 +584,11 @@ export type TestRunBuilder<T extends DataStructure | undefined = undefined> = {
 	 *                 },
 	 *             },
 	 *         };
-	 *     });
+	 *     }, maximLogger);
 	 */
-	yieldsOutput: (outputFunction: TestRunConfig<T>["outputFunction"]) => TestRunBuilder<T>;
+	yieldsOutput: (outputFunction: TestRunConfig<T>["outputFunction"], maximLogger?: MaximLogger) => TestRunBuilder<T>;
+
+	yieldsOutputWithTracing: (outputFunction: TestRunConfig<T>["outputFunctionWithTracing"], maximLogger: MaximLogger, disableDefaultTraceCreation?: boolean) => TestRunBuilder<T>;
 
 	/**
 	 * Sets the prompt version ID for the test run. Optionally, you can also set the context to evaluate for the prompt. (Note: setting the context to evaluate will end up overriding the CONTEXT_TO_EVALUATE dataset column value)
@@ -681,6 +757,28 @@ export type MaximAPICreateTestRunResponse =
 			};
 	  };
 
+export type MaximAPITestRunEntryCreatePayload = {
+	testRun: {
+		id: string;
+		datasetEntryId?: string;
+		datasetId?: string;
+		workspaceId: string;
+		humanEvaluationConfig?: {
+			emails: string[];
+			instructions: string;
+			requester: string;
+		};
+		evalConfig: unknown;
+		parentTestRunId?: string;
+	};
+};
+
+export type MaximAPITestRunEntryCreateResponse = {
+	data: {
+		id: string;
+	};
+};
+
 export type MaximAPITestRunEntryPushPayload<T extends DataStructure | undefined = undefined> = {
 	testRun: {
 		id: string;
@@ -713,9 +811,11 @@ export type MaximAPITestRunEntryPushPayload<T extends DataStructure | undefined 
 		};
 	};
 	entry: MaximAPITestRunEntry;
+	localSimulation?: boolean;
 };
 
 export type MaximAPITestRunEntry = {
+	id?: string;
 	input?: string;
 	expectedOutput?: string;
 	contextToEvaluate?: string | string[];
@@ -725,6 +825,7 @@ export type MaximAPITestRunEntry = {
 	meta?: {
 		variables?: Record<string, Variable>;
 		sdkVariables?: Record<string, Variable>;
+		connectedTraceId?: string;
 	};
 	dataEntry: Record<string, string | string[] | Variable | null | undefined>;
 	localEvaluationResults?: (LocalEvaluationResult & { id: string })[];
@@ -1022,6 +1123,79 @@ export type MaximAPITestRunEntryExecuteSimulationWorkflowResponse =
 					output: number;
 					total: number;
 				};
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+// Local-execution API types for simulation with yieldsOutput
+export type MaximAPITestRunSimulationLocalExecutionPayload = {
+	testRunId: string;
+	workspaceId: string;
+	datasetEntryId?: string;
+	entry?: {
+		input?: string | null;
+		scenario?: string | null;
+		expectedSteps?: string | null;
+		contextToEvaluate?: string | string[] | null;
+		dataEntry?: Record<string, string | string[] | null | undefined> | null;
+	};
+	simulationConfig: TestRunConfig["simulationConfig"];
+	conversationHistory?: SimulationConversationTurn[];
+	testRunEntryId?: string;
+};
+
+// Raw response from the backend (before normalization)
+export type MaximAPITestRunSimulationLocalExecutionRawResponse =
+	| {
+			data: {
+				testRunEntryId?: string;
+				userInput: string | null;
+				stopReason?: "STOP_PHRASE" | "MAX_TURNS" | null;
+				usage?: {
+					promptTokens: number;
+					completionTokens: number;
+					totalTokens: number;
+					latency?: number;
+				};
+				cost?: {
+					input: number;
+					output: number;
+					total: number;
+				};
+				sessionId?: string;
+				simulationId?: string;
+			};
+	  }
+	| {
+			error: {
+				message: string;
+			};
+	  };
+
+// Normalized response after SDK processing (userInput converted to object)
+export type MaximAPITestRunSimulationLocalExecutionPostResponse =
+	| {
+			data: {
+				testRunEntryId?: string;
+				userInput: Record<string, unknown> | null;
+				stopReason?: "STOP_PHRASE" | "MAX_TURNS" | null;
+				usage?: {
+					promptTokens: number;
+					completionTokens: number;
+					totalTokens: number;
+					latency?: number;
+				};
+				cost?: {
+					input: number;
+					output: number;
+					total: number;
+				};
+				sessionId?: string;
+				simulationId?: string;
 			};
 	  }
 	| {

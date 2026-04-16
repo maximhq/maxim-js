@@ -7,7 +7,7 @@ import type {
 	PassFailCriteriaType,
 	Result,
 } from "../models/evaluator";
-import type { TestRunConfig, TestRunLogger, YieldedOutput } from "../models/testRun";
+import type { SimulationConversationTurn, TestRunConfig, TestRunLogger, YieldedOutput } from "../models/testRun";
 import { ExtractAPIDataType } from "../utils/utils";
 import type { MaximAPITestRunEntryExecuteSimulationPromptGetResponse } from "../models/testRun";
 import type { MaximAPITestRunEntryExecuteSimulationWorkflowGetResponse } from "../models/testRun";
@@ -18,6 +18,21 @@ export async function runOutputFunction<T extends DataStructure | undefined>(
 ): Promise<ReturnType<NonNullable<TestRunConfig<T>["outputFunction"]>>> {
 	try {
 		const result = await outputFunction(dataEntry);
+		return result;
+	} catch (err) {
+		throw new Error(`Error while running output function`, {
+			cause: err,
+		});
+	}
+}
+
+export async function runOutputFunctionWithTracing<T extends DataStructure | undefined>(
+	outputFunction: NonNullable<TestRunConfig<T>["outputFunctionWithTracing"]>,
+	dataEntry: Data<T>,
+	traceId: string,
+): Promise<ReturnType<NonNullable<TestRunConfig<T>["outputFunctionWithTracing"]>>> {
+	try {
+		const result = await outputFunction(dataEntry, traceId);
 		return result;
 	} catch (err) {
 		throw new Error(`Error while running output function`, {
@@ -391,6 +406,7 @@ export function simulationPromptVersionIdOutputFunctionClosure<T extends DataStr
 							retrievedContextToEvaluate: undefined,
 							messages: result.messages,
 							simulationMeta: {
+								testRunEntryId: postResult.testRunEntryId,
 								sessionId: result.sessionId,
 								simulationId: result.simulationId,
 								messages: result.messages ?? [],
@@ -407,6 +423,7 @@ export function simulationPromptVersionIdOutputFunctionClosure<T extends DataStr
 							retrievedContextToEvaluate: undefined,
 							messages: result.messages,
 							simulationMeta: {
+								testRunEntryId: postResult.testRunEntryId,
 								sessionId: result.sessionId,
 								simulationId: result.simulationId,
 								messages: result.messages ?? [],
@@ -474,6 +491,7 @@ export function simulationWorkflowIdOutputFunctionClosure<T extends DataStructur
 							retrievedContextToEvaluate: undefined,
 							messages: undefined,
 							simulationMeta: {
+								testRunEntryId: postResult.testRunEntryId,
 								sessionId: result.sessionId,
 								simulationId: result.simulationId,
 								messages: [],
@@ -493,6 +511,7 @@ export function simulationWorkflowIdOutputFunctionClosure<T extends DataStructur
 							retrievedContextToEvaluate: undefined,
 							messages: undefined,
 							simulationMeta: {
+								testRunEntryId: postResult.testRunEntryId,
 								sessionId: result.sessionId,
 								simulationId: result.simulationId,
 								messages: [],
@@ -512,4 +531,233 @@ export function simulationWorkflowIdOutputFunctionClosure<T extends DataStructur
 			throw error;
 		}
 	};
+}
+
+export function simulationYieldsOutputFunctionClosure<T extends DataStructure | undefined>(
+	testRunId: string,
+	workspaceId: string,
+	simulationConfig: NonNullable<TestRunConfig<T>["simulationConfig"]>,
+	outputFunction: NonNullable<TestRunConfig<T>["outputFunction"]>,
+	TestRunAPIService: MaximTestRunAPI,
+	datasetEntryId: string | undefined,
+	input: string | undefined,
+	scenario: string | undefined,
+	expectedSteps: string | undefined,
+	contextToEvaluate: string | string[] | undefined,
+	timeoutInMinutes: number = 15,
+	logger: { info: (message: string) => void },
+) {
+		return async (data: Data<T>): Promise<YieldedOutput> => {
+		let testRunEntryId: string | undefined;
+		try {
+			const maxTurns = simulationConfig.maxTurns ?? 10;
+			const conversationHistory: SimulationConversationTurn[] = [];
+			const simulationOutputs: string[] = [];
+			let sessionId: string | undefined;
+			let simulationId: string | undefined;
+			let stopReason: string | undefined;
+			let isComplete = false;
+			let turnNumber = 0;
+
+			// Aggregated usage and cost
+			let totalPromptTokens = 0;
+			let totalCompletionTokens = 0;
+			let totalTokens = 0;
+			let totalInputCost = 0;
+			let totalOutputCost = 0;
+			let totalCost = 0;
+
+			// Resolve persona with priority: dataset column > simulation config
+			let datasetPersona: string | undefined;
+			if (data && typeof data === "object") {
+				for (const [key, value] of Object.entries(data)) {
+					if (key.toLowerCase() === "persona" && value != null) {
+						const personaStr = String(value).trim();
+						if (personaStr) {
+							datasetPersona = personaStr;
+							break;
+						}
+					}
+				}
+			}
+			let simconfigPersona: string | undefined;
+			if (simulationConfig.persona && !datasetPersona) {
+				if (typeof simulationConfig.persona === "string") {
+					simconfigPersona = simulationConfig.persona;
+				} else if (simulationConfig.persona.type === "DATASET_COLUMN") {
+					const colName = simulationConfig.persona.payload;
+					const val = data && typeof data === "object" ? data[colName] : undefined;
+					if (val != null) {
+						const valStr = String(val).trim();
+						simconfigPersona = valStr || undefined;
+					}
+				}
+			}
+
+			const resolvedPersona = datasetPersona ?? simconfigPersona;
+			const resolvedSimulationConfig = { ...simulationConfig, persona: resolvedPersona };
+
+			// Turn-by-turn simulation loop
+			const simulationStartTime = Date.now();
+			while (turnNumber < maxTurns && !isComplete) {
+				turnNumber++;
+
+				// Call the local-execution endpoint to get the next user message
+				const turnResult = await TestRunAPIService.executeSimulationLocalExecution({
+					testRunId,
+					workspaceId,
+					datasetEntryId: turnNumber === 1 ? datasetEntryId : undefined,
+					entry:
+						turnNumber === 1
+							? {
+									input: input ?? null,
+									scenario: scenario ?? null,
+									expectedSteps: expectedSteps ?? null,
+									contextToEvaluate: contextToEvaluate ?? null,
+									dataEntry: data,
+								}
+							: undefined,
+					simulationConfig: resolvedSimulationConfig,
+					conversationHistory: turnNumber > 1 ? conversationHistory : undefined,
+					testRunEntryId,
+				});
+
+				// Store testRunEntryId, sessionId, simulationId from first turn
+				if (turnNumber === 1) {
+					testRunEntryId = turnResult.testRunEntryId;
+					sessionId = turnResult.sessionId;
+					simulationId = turnResult.simulationId;
+				}
+
+				// Aggregate usage and cost
+				if (turnResult.usage) {
+					totalPromptTokens += turnResult.usage.promptTokens;
+					totalCompletionTokens += turnResult.usage.completionTokens;
+					totalTokens += turnResult.usage.totalTokens;
+				}
+				if (turnResult.cost) {
+					totalInputCost += turnResult.cost.input;
+					totalOutputCost += turnResult.cost.output;
+					totalCost += turnResult.cost.total;
+				}
+
+				// Check stopReason from backend (triggers end of simulation, log the reason)
+				if (turnResult.stopReason) {
+					stopReason = turnResult.stopReason;
+					logger.info(`Simulation stopped: ${stopReason}`);
+					isComplete = true;
+					break;
+				}
+
+				// userInput is normalized to Record<string, unknown>|null by the API layer
+				const userInput = turnResult.userInput;
+
+				// If userInput is null/undefined, simulation has ended
+				if (userInput === null || userInput === undefined) {
+					isComplete = true;
+					break;
+				}
+
+				// Call the user's outputFunction with simulation context
+				const assistantOutput = await outputFunction(data, {
+					conversationHistory,
+					currentUserInput: userInput,
+					turnNumber,
+					totalCost,
+					totalTokens,
+				});
+
+				// Build response for conversation history
+				const response: Record<string, unknown> = {
+					output: assistantOutput.data,
+					tool_calls: assistantOutput.toolCalls ?? [],
+				};
+
+				simulationOutputs.push(assistantOutput.data);
+
+				// Add turn to conversation history for next API call
+				const normalizedRequest: Record<string, unknown> = {
+					input: typeof userInput === "object" && userInput !== null
+						? ((userInput as Record<string, unknown>)["input"] ?? "")
+						: String(userInput ?? ""),
+				};
+				conversationHistory.push({
+					turn: turnNumber,
+					request: normalizedRequest,
+					response,
+				});
+
+				// Check stopTrigger
+				if (simulationConfig.stopTrigger) {
+					const fieldValue = getNestedFieldValue(assistantOutput, simulationConfig.stopTrigger.field);
+					if (fieldValue === simulationConfig.stopTrigger.value) {
+						isComplete = true;
+						break;
+					}
+				}
+			}
+
+			// Build final YieldedOutput - usage/cost in simulationMeta for simulation runs
+			const totalLatency = Date.now() - simulationStartTime;
+			const lastTurn =
+				conversationHistory.length > 0
+					? {
+							turn: conversationHistory.length,
+							request: conversationHistory[conversationHistory.length - 1].request,
+							response: conversationHistory[conversationHistory.length - 1].response,
+						}
+					: undefined;
+
+			const finalOutput: YieldedOutput = {
+				data: simulationOutputs[simulationOutputs.length - 1] || "",
+				simulationOutputs,
+				simulationMeta: {
+					testRunEntryId,
+					sessionId,
+					simulationId,
+					messages: conversationHistory,
+					lastTurn,
+					...(stopReason && { stopReason }),
+					usage: {
+						promptTokens: totalPromptTokens,
+						completionTokens: totalCompletionTokens,
+						totalTokens: totalTokens,
+						latency: totalLatency,
+					},
+					cost: {
+						input: totalInputCost,
+						output: totalOutputCost,
+						total: totalCost,
+					},
+				},
+			};
+
+			return finalOutput;
+		} catch (error) {
+			if (testRunEntryId) {
+				try {
+					await TestRunAPIService.updateSimulationStatus(testRunEntryId, "FAILED");
+				} catch (cleanupError) {
+					// Log but don't mask the original error
+					const msg = `Failed to mark simulation as failed (testRunEntryId: ${testRunEntryId}): ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
+					"error" in logger && typeof logger.error === "function" ? logger.error(msg) : logger.info(msg);
+				}
+			}
+			throw error;
+		}
+	};
+}
+
+// Helper function to get nested field value from an object
+function getNestedFieldValue(obj: any, fieldPath: string): any {
+	const keys = fieldPath.split(".");
+	let value = obj;
+	for (const key of keys) {
+		if (value && typeof value === "object" && key in value) {
+			value = value[key];
+		} else {
+			return undefined;
+		}
+	}
+	return value;
 }
