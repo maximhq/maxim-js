@@ -2,6 +2,7 @@ import { LanguageModelV1CallOptions, LanguageModelV1ProviderMetadata } from "ai-
 import { LanguageModelV2CallOptions, LanguageModelV2ToolResultOutput, SharedV2ProviderOptions } from "ai-sdk-provider-v2";
 import { LanguageModelV3CallOptions, LanguageModelV3ToolResultOutput, SharedV3ProviderOptions } from "ai-sdk-provider-v3";
 import { v4 as uuid } from "uuid";
+import { getMaximFlushStore } from "./lambda";
 import { MaximVercelProviderMetadata } from "./types";
 
 /**
@@ -138,4 +139,173 @@ export function parseToolResultOutput(content: LanguageModelV2ToolResultOutput |
 		default:
 			throw new Error(`Unknown tool result type: ${content}`);
 	}
+}
+
+type WaitUntil = (promise: Promise<unknown>) => void;
+
+/**
+ * Minimal interface of MaximLogger needed by the flush strategy helpers.
+ * Kept structural to avoid an import cycle with `../logger`.
+ */
+interface FlushableLogger {
+	flush(): Promise<void>;
+}
+
+/**
+ * Returns Vercel's `waitUntil` if running inside a Vercel Function request context.
+ *
+ * Vercel exposes the request context on a well-known global symbol; `waitUntil`
+ * keeps the function alive after the response completes, which is exactly the
+ * window needed to upload telemetry without blocking the response stream.
+ */
+function getVercelWaitUntil(): WaitUntil | undefined {
+	try {
+		const ctx = (globalThis as Record<PropertyKey, unknown>)[Symbol.for("@vercel/request-context") as unknown as string] as
+			| { get?: () => { waitUntil?: WaitUntil } | undefined }
+			| undefined;
+		const waitUntil = ctx?.get?.()?.waitUntil;
+		return typeof waitUntil === "function" ? waitUntil : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+type DeferTask = (fn: () => void | Promise<unknown>) => void;
+
+// `undefined` = not yet resolved, `null` = unavailable on this runtime.
+let expoDeferTask: DeferTask | null | undefined;
+
+/**
+ * Returns Expo server's `deferTask` if the `expo/server` runtime is available.
+ *
+ * `deferTask` runs its callback after the response has been sent and keeps the
+ * request handler alive until it settles — the same post-response window as
+ * Vercel's `waitUntil`, so telemetry uploads without adding response latency.
+ * `expo/server` is an optional peer, loaded defensively (and memoized) so
+ * non-Expo runtimes (where the module is absent) degrade to the next flush
+ * strategy instead of throwing at flush time.
+ */
+function getExpoDeferTask(): DeferTask | undefined {
+	if (expoDeferTask !== undefined) {
+		return expoDeferTask ?? undefined;
+	}
+	try {
+		const expoServer = require("expo/server") as { deferTask?: DeferTask };
+		expoDeferTask = typeof expoServer.deferTask === "function" ? expoServer.deferTask : null;
+	} catch {
+		expoDeferTask = null;
+	}
+	return expoDeferTask ?? undefined;
+}
+
+function isOnAWSLambda(): boolean {
+	return process.env["AWS_LAMBDA_FUNCTION_NAME"] !== undefined;
+}
+
+function safeFlush(logger: FlushableLogger): Promise<void> {
+	return logger.flush().catch((err) => {
+		console.error(`[MaximSDK] Background log flush failed: ${err instanceof Error ? err.message : err}`);
+	});
+}
+
+/**
+ * Flushes logs using an environment-appropriate strategy, never blocking the
+ * caller unless the environment gives no alternative:
+ *
+ * - `withMaximLambdaHandler` active: register the flush on the invocation's
+ *   flush store — the handler wrapper awaits it (capped) in the window after
+ *   the response closes, so nothing blocks here.
+ * - Vercel Functions: hand the flush to `waitUntil` — the runtime keeps the
+ *   function alive after the response finishes, guaranteeing delivery with no
+ *   added response latency.
+ * - Expo server (`expo/server`): hand the flush to `deferTask` — it runs after
+ *   the response is sent and keeps the request handler alive until it settles,
+ *   the same post-response window as Vercel's `waitUntil`.
+ * - AWS Lambda (no `waitUntil` available): await the flush — the sandbox may
+ *   freeze as soon as the response completes, so blocking is the only way to
+ *   guarantee delivery.
+ * - Long-running servers: fire-and-forget — delivery is covered by the
+ *   background flush plus the writer's auto-flush interval and `cleanup()`.
+ */
+export function scheduleLoggerFlush(logger: FlushableLogger): Promise<void> {
+	const flushStore = getMaximFlushStore();
+	if (flushStore) {
+		flushStore.pending.push(safeFlush(logger));
+		return Promise.resolve();
+	}
+	const waitUntil = getVercelWaitUntil();
+	if (waitUntil) {
+		waitUntil(safeFlush(logger));
+		return Promise.resolve();
+	}
+	const deferTask = getExpoDeferTask();
+	if (deferTask) {
+		try {
+			deferTask(() => safeFlush(logger));
+		} catch {
+			// `deferTask` was called outside an Expo request context — fall back to
+			// a background flush so a log is never dropped on the floor.
+			void safeFlush(logger);
+		}
+		return Promise.resolve();
+	}
+	if (isOnAWSLambda()) {
+		return safeFlush(logger);
+	}
+	void safeFlush(logger);
+	return Promise.resolve();
+}
+
+/**
+ * Orders a stream close against the log flush per environment:
+ *
+ * - `withMaximLambdaHandler` active: close first, then register the flush on
+ *   the invocation's flush store — the handler wrapper awaits it (capped) after
+ *   the response closes, so the consumer unblocks immediately and logs are
+ *   still delivered before the sandbox freezes.
+ * - Vercel Functions: close first (consumer unblocks immediately), then flush
+ *   inside `waitUntil`.
+ * - Expo server (`expo/server`): close first, then flush inside `deferTask` —
+ *   it runs after the response is sent and holds the request open until the
+ *   upload settles, so the consumer unblocks immediately and logs still deliver.
+ * - AWS Lambda: flush first, then close — closing ends the response, after
+ *   which the sandbox may freeze before the upload completes.
+ * - Long-running servers: close first, flush in the background.
+ *
+ * `streamText` only emits finish / ends the UI message stream once the model
+ * stream closes, so anything awaited before `close()` directly delays the
+ * consumer.
+ */
+export async function flushAndCloseStream(logger: FlushableLogger, close: () => void): Promise<void> {
+	const flushStore = getMaximFlushStore();
+	if (flushStore) {
+		close();
+		flushStore.pending.push(safeFlush(logger));
+		return;
+	}
+	const waitUntil = getVercelWaitUntil();
+	if (waitUntil) {
+		close();
+		waitUntil(safeFlush(logger));
+		return;
+	}
+	const deferTask = getExpoDeferTask();
+	if (deferTask) {
+		close();
+		try {
+			deferTask(() => safeFlush(logger));
+		} catch {
+			// `deferTask` was called outside an Expo request context — fall back to
+			// a background flush so a log is never dropped on the floor.
+			void safeFlush(logger);
+		}
+		return;
+	}
+	if (isOnAWSLambda()) {
+		await safeFlush(logger);
+		close();
+		return;
+	}
+	close();
+	void safeFlush(logger);
 }

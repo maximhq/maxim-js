@@ -6,6 +6,8 @@ import { MaximAISDKWrapper } from "./v1/wrapper";
 import { MaximAISDKWrapperV2 } from "./v2/wrapperV2";
 import { MaximAISDKWrapperV3 } from "./v3/wrapperV3";
 
+export { withMaximLambdaHandler } from "./lambda";
+
 /**
  * Wraps a Vercel AI SDK language model (v1, v2, or v3) with Maxim logging and tracing capabilities.
  *

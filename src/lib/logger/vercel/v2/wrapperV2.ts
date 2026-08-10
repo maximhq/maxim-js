@@ -1,6 +1,12 @@
 import type { LanguageModelV2, LanguageModelV2CallOptions, LanguageModelV2StreamPart } from "ai-sdk-provider-v2";
 import { MaximLogger } from "../../logger";
-import { determineProvider, extractMaximMetadataFromOptions, extractModelParameters } from "./../utils";
+import {
+	determineProvider,
+	extractMaximMetadataFromOptions,
+	extractModelParameters,
+	flushAndCloseStream,
+	scheduleLoggerFlush,
+} from "./../utils";
 import { Generation, Session, Trace } from "../../components";
 import { v4 as uuid } from "uuid";
 import { ChatCompletionMessage, CompletionRequest, CompletionRequestContent } from "src/lib/models/prompt";
@@ -227,7 +233,8 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 					trace.end();
 				}
 			}
-			await this.logger.flush();
+			// Flush without blocking the caller where the environment allows it
+			await scheduleLoggerFlush(this.logger);
 		}
 	}
 
@@ -322,8 +329,6 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 										}
 									}
 
-									// Flush logs after processStreamV2 and tool-result logging complete
-									await wrapperInstance.logger.flush();
 								} catch (error) {
 									console.error("[MaximSDK] Processing failed:", error);
 									if (generation) {
@@ -332,12 +337,13 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 										});
 										generation.end();
 									}
-									// Flush logs even on error
-									await wrapperInstance.logger.flush();
 								}
 
-								// Now close the stream
-								controller.close();
+								// Close the stream and flush logs with environment-appropriate
+								// ordering — consumers (e.g. streamText) are only unblocked once
+								// the stream closes, so the flush must not delay close() unless
+								// the environment leaves no alternative (bare AWS Lambda).
+								await flushAndCloseStream(wrapperInstance.logger, () => controller.close());
 								break;
 							}
 
@@ -358,8 +364,8 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 							});
 							generation.end();
 						}
-						// Flush logs on stream error
-						await wrapperInstance.logger.flush();
+						// Flush logs on stream error (non-blocking where possible)
+						await scheduleLoggerFlush(wrapperInstance.logger);
 					}
 				},
 			});
@@ -380,8 +386,8 @@ export class MaximAISDKWrapperV2 implements LanguageModelV2 {
 			// Log error details
 			console.error("[MaximSDK] doStream failed:", error);
 
-			// Flush logs before throwing error
-			await this.logger.flush();
+			// Flush logs before throwing error (non-blocking where possible)
+			await scheduleLoggerFlush(this.logger);
 
 			throw error;
 		} finally {
