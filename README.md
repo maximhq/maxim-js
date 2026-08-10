@@ -524,6 +524,11 @@ For projects still using our separate package [Maxim Langchain Tracer](https://w
 
 ## Version changelog
 
+### v6.31.0
+
+- fix: Adds handler support for long-running streams on cloud platforms
+- feat: Add AI SDK v7 support
+
 ### v6.30.2
 
 - feat: Adds support for `simulation` with `yieldsOutput`
