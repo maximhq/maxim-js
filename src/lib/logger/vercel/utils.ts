@@ -1,6 +1,7 @@
 import { LanguageModelV1CallOptions, LanguageModelV1ProviderMetadata } from "ai-sdk-provider-v1";
 import { LanguageModelV2CallOptions, LanguageModelV2ToolResultOutput, SharedV2ProviderOptions } from "ai-sdk-provider-v2";
 import { LanguageModelV3CallOptions, LanguageModelV3ToolResultOutput, SharedV3ProviderOptions } from "ai-sdk-provider-v3";
+import { LanguageModelV4CallOptions, LanguageModelV4ToolResultOutput, SharedV4ProviderOptions } from "ai-sdk-provider-v4";
 import { v4 as uuid } from "uuid";
 import { getMaximFlushStore } from "./lambda";
 import { MaximVercelProviderMetadata } from "./types";
@@ -50,7 +51,9 @@ export function determineProvider(
  * @param options - The call options containing model parameters.
  * @returns An object containing the extracted model parameters, including temperature, maxTokens, topP, topK, frequencyPenalty, stopSequences, seed, headers, presencePenalty, abortSignal, and responseFormat.
  */
-export function extractModelParameters(options: LanguageModelV1CallOptions | LanguageModelV2CallOptions | LanguageModelV3CallOptions) {
+export function extractModelParameters(
+	options: LanguageModelV1CallOptions | LanguageModelV2CallOptions | LanguageModelV3CallOptions | LanguageModelV4CallOptions,
+) {
 	const params = {
 		temperature: options.temperature,
 		topP: options.topP,
@@ -75,7 +78,7 @@ export function extractModelParameters(options: LanguageModelV1CallOptions | Lan
  * @returns The extracted Maxim metadata with a guaranteed `spanId`, or undefined if not present.
  */
 export function extractMaximMetadataFromOptions(
-	metadata: LanguageModelV1ProviderMetadata | SharedV2ProviderOptions | SharedV3ProviderOptions | undefined,
+	metadata: LanguageModelV1ProviderMetadata | SharedV2ProviderOptions | SharedV3ProviderOptions | SharedV4ProviderOptions | undefined,
 ) {
 	if (!metadata || !metadata["maxim"]) return undefined;
 	const maximMetadata = metadata["maxim"] as MaximVercelProviderMetadata;
@@ -127,7 +130,9 @@ export function extractErrorInfo(error: unknown): { message: string; code?: stri
 	return { message: String(error) };
 }
 
-export function parseToolResultOutput(content: LanguageModelV2ToolResultOutput | LanguageModelV3ToolResultOutput): string {
+export function parseToolResultOutput(
+	content: LanguageModelV2ToolResultOutput | LanguageModelV3ToolResultOutput | LanguageModelV4ToolResultOutput,
+): string {
 	switch (content.type) {
 		case "text":
 		case "error-text":
@@ -136,8 +141,11 @@ export function parseToolResultOutput(content: LanguageModelV2ToolResultOutput |
 		case "error-json":
 		case "content":
 			return JSON.stringify(content.value);
+		// v4 introduces `execution-denied` for tool calls the user declined to run
+		case "execution-denied":
+			return content.reason ?? "Tool execution denied";
 		default:
-			throw new Error(`Unknown tool result type: ${content}`);
+			throw new Error(`Unknown tool result type: ${JSON.stringify(content)}`);
 	}
 }
 
